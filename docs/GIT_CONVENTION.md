@@ -158,11 +158,24 @@ extra rules:
 Small fixtures that tests need go in `tests/data/` and should stay under about
 1 MB each.
 
+## Code freeze
+
+The codebase closes on **Thursday 26 November 2026**, two days before the
+source code submission on Saturday 28 November.
+
+- Open pull requests for anything that must be in the submission early enough
+  to be reviewed and merged by Thursday.
+- After the freeze, `main` accepts only `fix` and `docs` pull requests, and
+  only for problems that affect the submission. They are still reviewed.
+- No `feat`, `refactor`, `perf` or format changes after the freeze.
+- The frozen commit is tagged `v1.0-submission`. If a post-freeze fix is
+  merged, tag the new commit `v1.0.1-submission` and submit that one.
+
 ## Tags
 
 Tag the commit used for each submitted deliverable:
 
 ```
-git tag -a v0.1-pilot -m "First pilot card"
-git push origin v0.1-pilot
+git tag -a v1.0-submission -m "Source code submission"
+git push origin v1.0-submission
 ```

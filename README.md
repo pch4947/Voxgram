@@ -15,6 +15,8 @@ implemented by hand; existing libraries are used only for I/O, linear algebra
 and the audio backend.
 
 > **Status:** repository bootstrap. No pipeline stage is implemented yet.
+> Code freeze is Thursday 26 November 2026; source code submission is
+> Saturday 28 November 2026.
 > See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) for milestones.
 
 ## Pipeline

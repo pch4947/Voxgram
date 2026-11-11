@@ -142,19 +142,33 @@ owners review.
 
 ## 6. Milestones
 
-The report orders the work but sets no dates. Target dates are open
-(section 10) and should be filled in from the course schedule.
+Two dates are fixed:
+
+- **Source code submission: Saturday 28 November 2026.**
+- **Code freeze: Thursday 26 November 2026.** The codebase is closed in a
+  stable state two days before submission.
+
+The dates for M1 to M5 are **Proposed**, worked back from the freeze, and need
+team agreement.
 
 | # | Milestone | Exit criterion | Target date |
 | --- | --- | --- | --- |
-| M0 | Repository bootstrap | Conventions, CI and format constants merged | Done with this commit |
-| M1 | Digital baseline | Intelligible speech from an unprinted, unphotographed grayscale image | TBD |
-| M2 | Card format frozen | Marker, cue and patch coordinates specified; first card printed | TBD |
-| M3 | Front-facing photograph | Intelligible speech from a front-facing photograph of an undamaged card | TBD |
-| M4 | Core deliverable | Works on intact cards with moderate tilt and illumination variation | TBD |
-| M5 | Evaluation | Stage-by-stage ablation complete; success and failure conditions recorded | TBD |
+| M0 | Repository bootstrap | Conventions, CI and format constants merged | Wed 11 Nov (done) |
+| M1 | Digital baseline | Intelligible speech from an unprinted, unphotographed grayscale image | Sun 15 Nov |
+| M2 | Card format frozen | Marker, cue and patch coordinates specified; first card printed | Sun 15 Nov |
+| M3 | Front-facing photograph | Intelligible speech from a front-facing photograph of an undamaged card | Thu 19 Nov |
+| M4 | Core deliverable | Works on intact cards with moderate tilt and illumination variation | Mon 23 Nov |
+| M5 | Evaluation | Stage-by-stage ablation complete; success and failure conditions recorded | Wed 25 Nov |
+| CF | Code freeze | `main` is green, runs end to end from a clean install, and is tagged | **Thu 26 Nov** |
+| SUB | Source code submission | The tagged commit is submitted | **Sat 28 Nov** |
 | M6 | Final report and presentation | Submitted | TBD |
-| X | Extensions | Damage, heavy blur, real-time, GUI, as time allows | After M5 |
+| X | Extensions | Damage, heavy blur, real-time, GUI | Only if M4 is met early; nothing new after Mon 23 Nov |
+
+**Code freeze rules.** From the end of Thursday 26 November, `main` accepts
+only fixes for bugs that break the submitted pipeline, plus documentation.
+No new features, refactors or format changes. Each such fix still goes through
+a reviewed pull request. Friday 27 November is a buffer for a clean-install
+check and packaging, not for development.
 
 **Gate after M1 and M3.** If either fails, adjust duration, grid density,
 dynamic range or physical print size before working on difficult capture
@@ -223,7 +237,7 @@ outside image read/write.
 
 | # | Decision | Needed by |
 | --- | --- | --- |
-| 1 | Target dates for M1 to M6, from the course schedule | Now |
+| 1 | Confirm the proposed dates for M1 to M5; date of the final report and presentation (M6) | Now |
 | 2 | Review pairs: who reviews whose module | Before the first module PR |
 | 3 | Marker shape and size, orientation cue, patch count and gray levels, exact canonical coordinates | M2 |
 | 4 | Final values of duration, grid density, dynamic range and print size | After the M1 and M3 gates |
