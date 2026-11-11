@@ -21,8 +21,9 @@ interpreter.
 2. Branch from an up-to-date `main`: `git switch -c feat/12-marker-detection`.
 3. Commit in small steps using the commit convention.
 4. Run the checks locally (below).
-5. Open a pull request, link the issue, and request a reviewer.
-6. After approval and green CI, squash and merge, then delete the branch.
+5. Open a pull request and link the issue. Ask a teammate to look at it if you
+   want a second opinion; approval is not required.
+6. Once CI is green, squash and merge, then delete the branch.
 
 ## Checks
 

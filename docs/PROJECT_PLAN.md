@@ -125,14 +125,15 @@ captures the image. The format parameters are in
 | ROI extraction, decoder integration | Cyprien Delrue | `extraction.py`, `decoder.py` |
 | Experiment records | Cyprien Delrue | `experiments/` |
 
-Every member also reviews another member's module. Review pairs are an open
-decision (section 10).
+Every member also reviews another member's module over the course of the
+project. Review is not a condition for merging a pull request; who looks at
+whose module is an open decision (section 10).
 
 ### Interfaces between modules
 
 The modules meet at three shared definitions. Changing any of them affects
-more than one owner, so changes go through a pull request that all affected
-owners review.
+more than one owner, so the affected owners are told before the change is
+merged.
 
 | Interface | Defined in | Consumers |
 | --- | --- | --- |
@@ -167,7 +168,7 @@ team agreement.
 **Code freeze rules.** From the end of Thursday 26 November, `main` accepts
 only fixes for bugs that break the submitted pipeline, plus documentation.
 No new features, refactors or format changes. Each such fix still goes through
-a reviewed pull request. Friday 27 November is a buffer for a clean-install
+a pull request with green CI. Friday 27 November is a buffer for a clean-install
 check and packaging, not for development.
 
 **Gate after M1 and M3.** If either fails, adjust duration, grid density,
@@ -231,14 +232,14 @@ outside image read/write.
 | Glare or deep shadow | Flag saturated regions instead of inverting them. |
 | Paper bending or lens distortion | Out of scope. Keep the card flat and away from the image edges. |
 | Slow pure-Python loops | Vectorize with NumPy arrays; log processing time. |
-| Encoder and decoder disagree on the format | Single source of truth in `format.py`; format changes need review by all affected owners. |
+| Encoder and decoder disagree on the format | Single source of truth in `format.py`; all affected owners are told before a format change is merged. |
 
 ## 10. Open decisions
 
 | # | Decision | Needed by |
 | --- | --- | --- |
 | 1 | Confirm the proposed dates for M1 to M5; date of the final report and presentation (M6) | Now |
-| 2 | Review pairs: who reviews whose module | Before the first module PR |
+| 2 | Who reviews whose module (not a merge requirement) | Before M3 |
 | 3 | Marker shape and size, orientation cue, patch count and gray levels, exact canonical coordinates | M2 |
 | 4 | Final values of duration, grid density, dynamic range and print size | After the M1 and M3 gates |
 | 5 | Evaluation metrics and the intelligibility procedure | Before M5 |

@@ -9,8 +9,8 @@ We use GitHub Flow: short-lived branches off `main`, merged by pull request.
 
 - `main` always passes CI. Nobody pushes to it directly.
 - One branch per issue. Delete the branch after merging.
-- Rebase on `main` or merge `main` in before asking for review if the branch
-  has fallen behind.
+- Rebase on `main` or merge `main` in before merging if the branch has fallen
+  behind.
 
 Branch names:
 
@@ -118,11 +118,11 @@ docs(format): specify marker positions in canonical coordinates
   message on `main`.
 - Link the issue with `Closes #<number>` in the description.
 - Keep pull requests small: one module change or one experiment.
-- At least one approval from a team member other than the author. Changes to a
-  module should be reviewed by someone who does not own it.
+- Approval is not required to merge. Request a review when you want one,
+  especially for changes outside your own module.
 - CI must pass.
 - Merge with **Squash and merge**, so `main` has one commit per pull request.
-- The author merges after approval and deletes the branch.
+- The author merges once CI is green and deletes the branch.
 
 Open a draft pull request early if you want feedback before the work is done.
 
@@ -137,14 +137,15 @@ extra rules:
    `docs/CARD_FORMAT.md`.
 3. Add `BREAKING CHANGE:` to the commit footer if cards printed under the old
    version can no longer be decoded.
-4. Request review from every owner whose module reads the changed values.
+4. Tell every owner whose module reads the changed values before merging.
 
 ## Issues
 
 - One issue per unit of work. Use the templates.
 - Assign yourself when you start.
-- Labels: `feat`, `bug`, `docs`, `experiment`, plus one area label matching the
-  scopes above.
+- Labels: one type label (`feat`, `bug`, `docs`, `experiment`) plus one area
+  label matching the scopes above, written `area: detect`, `area: geometry`
+  and so on.
 
 ## What not to commit
 
@@ -164,9 +165,9 @@ The codebase closes on **Thursday 26 November 2026**, two days before the
 source code submission on Saturday 28 November.
 
 - Open pull requests for anything that must be in the submission early enough
-  to be reviewed and merged by Thursday.
+  to be merged by Thursday.
 - After the freeze, `main` accepts only `fix` and `docs` pull requests, and
-  only for problems that affect the submission. They are still reviewed.
+  only for problems that affect the submission.
 - No `feat`, `refactor`, `perf` or format changes after the freeze.
 - The frozen commit is tagged `v1.0-submission`. If a post-freeze fix is
   merged, tag the new commit `v1.0.1-submission` and submit that one.
