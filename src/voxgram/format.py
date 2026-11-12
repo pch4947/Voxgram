@@ -7,7 +7,7 @@ Changing anything in this file changes the card format. Follow the format
 change rule in docs/GIT_CONVENTION.md.
 """
 
-FORMAT_VERSION = "0.1-pilot"
+FORMAT_VERSION = "0.2-pilot"
 
 # Audio
 SAMPLE_RATE = 16_000  # Hz, mono

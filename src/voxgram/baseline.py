@@ -11,9 +11,13 @@ separately:
                             quantization
 
 A photographed card cannot sound better than file 3, so later experiments are
-compared against it. If file 3 is clearly worse than file 2, the dynamic range
-or bit depth is the problem; if file 2 is already poor, the STFT settings or
-the duration are.
+compared against it. If file 3 is clearly worse than file 2, the dynamic range,
+the bit depth or the decoding rule is the problem; if file 2 is already poor,
+the STFT settings or the duration are.
+
+Spectral convergence only says how well Griffin-Lim met the magnitude it was
+given. The quiet-frame levels compare both reconstructions with the original
+recording, which is what shows noise added by the image path.
 
 Command line:
     python -m voxgram.baseline recording.wav -o outputs/baseline
@@ -37,6 +41,7 @@ from voxgram.audio_backend import (
 from voxgram.format import DB_FLOOR
 from voxgram.imageio import read_image, write_image
 from voxgram.intensity import (
+    gray_to_decibels,
     gray_to_magnitude,
     grid_to_image,
     image_to_grid,
@@ -47,6 +52,9 @@ IMAGE_NAME = "spectrogram.png"
 ORIGINAL_NAME = "1_original.wav"
 GRIFFIN_LIM_NAME = "2_griffinlim_only.wav"
 BASELINE_NAME = "3_digital_baseline.wav"
+
+# Frames this far below the loudest frame of the original count as quiet.
+QUIET_FRAME_DB = -40.0
 
 
 @dataclass(frozen=True)
@@ -62,6 +70,11 @@ class BaselineReport:
             exact magnitude. 0 is perfect.
         convergence_baseline: spectral convergence of file 3 against the
             decoded magnitude.
+        quiet_level_original_db: mean energy of the original in its quiet
+            frames, relative to its loudest frame. NaN if there are none.
+        quiet_level_griffinlim_db: the same for file 2.
+        quiet_level_baseline_db: the same for file 3. A value well above the
+            original means the image path adds noise.
     """
 
     image_exact: bool
@@ -69,6 +82,9 @@ class BaselineReport:
     quantization_error_db: float
     convergence_griffinlim: float
     convergence_baseline: float
+    quiet_level_original_db: float
+    quiet_level_griffinlim_db: float
+    quiet_level_baseline_db: float
 
     def lines(self) -> list[str]:
         return [
@@ -77,6 +93,9 @@ class BaselineReport:
             f"max quantization error:         {self.quantization_error_db:.3f} dB",
             f"spectral convergence, GL only:  {self.convergence_griffinlim:.4f}",
             f"spectral convergence, baseline: {self.convergence_baseline:.4f}",
+            f"quiet-frame level, original:    {self.quiet_level_original_db:.1f} dB",
+            f"quiet-frame level, GL only:     {self.quiet_level_griffinlim_db:.1f} dB",
+            f"quiet-frame level, baseline:    {self.quiet_level_baseline_db:.1f} dB",
         ]
 
 
@@ -88,6 +107,41 @@ def spectral_convergence(samples: np.ndarray, target_magnitude: np.ndarray) -> f
     achieved = stft_magnitude(samples).astype(np.float64)
     target = np.asarray(target_magnitude, dtype=np.float64)
     return float(np.linalg.norm(target - achieved) / np.linalg.norm(target))
+
+
+def quiet_frame_levels(
+    original: np.ndarray, reconstructions: list[np.ndarray]
+) -> tuple[float, list[float]]:
+    """Energy in the quiet frames of the original and of each reconstruction.
+
+    Quiet frames are those more than QUIET_FRAME_DB below the loudest frame of
+    the original. Each reconstruction is first scaled so that its energy in
+    the remaining frames matches the original, because Griffin-Lim output has
+    no fixed level.
+
+    Args:
+        original: (257, 376) magnitude of the recording.
+        reconstructions: (257, 376) magnitudes of reconstructed signals.
+
+    Returns:
+        The level of the original and one level per reconstruction, in dB
+        relative to the loudest frame of the original. NaN when no frame, or
+        every frame, is quiet.
+    """
+    energy = (np.asarray(original, dtype=np.float64) ** 2).sum(axis=0)
+    quiet = energy < energy.max() * 10.0 ** (QUIET_FRAME_DB / 10.0)
+    if not quiet.any() or quiet.all():
+        return float("nan"), [float("nan")] * len(reconstructions)
+
+    def level(frame_energy: np.ndarray) -> float:
+        return float(10.0 * np.log10(max(frame_energy[quiet].mean() / energy.max(), 1e-20)))
+
+    levels = []
+    for magnitude in reconstructions:
+        other = (np.asarray(magnitude, dtype=np.float64) ** 2).sum(axis=0)
+        scale = energy[~quiet].sum() / other[~quiet].sum()
+        levels.append(level(other * scale))
+    return level(energy), levels
 
 
 def run_baseline(
@@ -123,8 +177,11 @@ def run_baseline(
 
     normalized = magnitude / magnitude.max()
     above_floor = normalized > 10.0 ** (DB_FLOOR / 20.0)
-    error_db = np.abs(
-        20.0 * np.log10(normalized[above_floor]) - 20.0 * np.log10(decoded_magnitude[above_floor])
+    decoded_db = gray_to_decibels(image_to_grid(decoded_image))
+    error_db = np.abs(20.0 * np.log10(normalized[above_floor]) - decoded_db[above_floor])
+
+    quiet_original, (quiet_griffinlim, quiet_baseline) = quiet_frame_levels(
+        magnitude, [stft_magnitude(from_exact), stft_magnitude(from_image)]
     )
 
     return BaselineReport(
@@ -133,6 +190,9 @@ def run_baseline(
         quantization_error_db=float(error_db.max()) if error_db.size else 0.0,
         convergence_griffinlim=spectral_convergence(from_exact, magnitude),
         convergence_baseline=spectral_convergence(from_image, decoded_magnitude),
+        quiet_level_original_db=quiet_original,
+        quiet_level_griffinlim_db=quiet_griffinlim,
+        quiet_level_baseline_db=quiet_baseline,
     )
 
 

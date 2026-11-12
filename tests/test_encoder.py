@@ -92,6 +92,8 @@ def test_baseline_round_trip(tmp_path):
     assert 0.0 <= report.floor_fraction < 1.0
     assert report.convergence_griffinlim < 0.2
     assert report.convergence_baseline < 0.2
+    # The image path must not add noise where the original is quiet.
+    assert report.quiet_level_baseline_db < report.quiet_level_griffinlim_db + 3.0
     assert sf.info(str(tmp_path / baseline.BASELINE_NAME)).frames == 48_000
 
 
@@ -100,5 +102,7 @@ def test_baseline_cli(tmp_path, capsys):
     sf.write(str(wav), voiced(1.0), SAMPLE_RATE)
     out = tmp_path / "out"
     assert baseline.main([str(wav), "-o", str(out)]) == 0
-    assert "spectral convergence" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "spectral convergence" in printed
+    assert "quiet-frame level" in printed
     assert (out / baseline.BASELINE_NAME).is_file()
