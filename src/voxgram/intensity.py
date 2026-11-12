@@ -59,17 +59,18 @@ def magnitude_to_gray(magnitude: np.ndarray) -> np.ndarray:
     return gray.astype(np.uint8)
 
 
-def gray_to_magnitude(gray: np.ndarray) -> np.ndarray:
-    """Decode grayscale values into normalized linear magnitude.
+def gray_to_decibels(gray: np.ndarray) -> np.ndarray:
+    """Decode grayscale values into amplitude dB relative to the peak.
 
-    Accepts fractional values, because a photographed and corrected card does
-    not land on integer gray levels.
+    This is the exact inverse of the encoding formula, and the scale on which
+    extraction accuracy is measured. Accepts fractional values, because a
+    photographed and corrected card does not land on integer gray levels.
 
     Args:
         gray: (257, 376) grid ``p`` in [0, 255], integer or float.
 
     Returns:
-        (257, 376) float64 grid in [0.001, 1].
+        (257, 376) float64 grid in [DB_FLOOR, 0].
 
     Raises:
         ValueError: if the shape is wrong or values fall outside [0, 255].
@@ -80,9 +81,29 @@ def gray_to_magnitude(gray: np.ndarray) -> np.ndarray:
         raise ValueError("gray contains NaN or infinite values")
     if gray.min() < 0 or gray.max() > GRAY_WHITE:
         raise ValueError("gray values must lie in [0, 255]")
+    return DB_FLOOR * gray / GRAY_WHITE
 
-    decibels = DB_FLOOR * gray / GRAY_WHITE
-    return 10.0 ** (decibels / 20.0)
+
+def gray_to_magnitude(gray: np.ndarray) -> np.ndarray:
+    """Decode grayscale values into normalized linear magnitude for synthesis.
+
+    The floor amplitude is subtracted, so white decodes to silence. Without
+    that, every white cell would carry DB_FLOOR of energy, and across 257 bins
+    Griffin-Lim renders it as an audible broadband hiss. The subtraction is
+    continuous, so paper white that lands slightly below 255 after
+    calibration still decodes to almost nothing.
+
+    Args:
+        gray: (257, 376) grid ``p`` in [0, 255], integer or float.
+
+    Returns:
+        (257, 376) float64 grid in [0, 1]. Black is 1 and white is 0.
+
+    Raises:
+        ValueError: if the shape is wrong or values fall outside [0, 255].
+    """
+    amplitude = 10.0 ** (gray_to_decibels(gray) / 20.0)
+    return (amplitude - _FLOOR_AMPLITUDE) / (1.0 - _FLOOR_AMPLITUDE)
 
 
 def grid_to_image(grid: np.ndarray) -> np.ndarray:

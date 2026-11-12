@@ -1,6 +1,6 @@
 # Voxgram Card Format
 
-**Format version:** `0.1-pilot`. Provisional until the first pilot validates it.
+**Format version:** `0.2-pilot`. Provisional until the first pilot validates it.
 
 This is the shared specification that the encoder and the decoder must agree
 on. The numeric values here are mirrored in
@@ -65,16 +65,27 @@ photometric correction.
 
 ```
 D_hat = -60 * p / 255
-A_hat = 10 ** (D_hat / 20)
+A_hat = (10 ** (D_hat / 20) - 0.001) / (1 - 0.001)
 ```
 
-`A_hat` is a normalized linear magnitude in [0.001, 1].
+`A_hat` is a normalized linear magnitude in [0, 1]. Black decodes to 1 and
+white decodes to 0.
+
+`D_hat` is the exact inverse of the encoding and is the scale on which
+extraction accuracy is measured. `A_hat` is what Griffin-Lim receives. The
+floor amplitude 0.001 (-60 dB) is subtracted so that white means silence.
+Without the subtraction every white cell carries -60 dB of energy; with about
+two thirds of a speech spectrogram white, Griffin-Lim renders that as a
+broadband hiss, measured at about 13 dB above the recording's own level in
+quiet passages. The subtraction is continuous, so paper white that lands a
+few levels below 255 after calibration still decodes to almost nothing, which
+a hard "255 means zero" rule would not do.
 
 What is lost:
 
 - **Phase.** Estimated by Griffin-Lim.
 - **Absolute level.** The magnitude is peak-normalized before encoding.
-- **Values below -60 dB.** Clipped to the floor.
+- **Values below -60 dB.** Printed white and decoded as silence.
 - **Precision.** One gray level is 60 / 255, about 0.235 dB.
 
 ## 6. Physical layout
@@ -124,3 +135,4 @@ modules cannot be integrated.
 | Version | Date | Change |
 | --- | --- | --- |
 | `0.1-pilot` | 2026-11-11 | Initial pilot values from the Survey and Plan report |
+| `0.2-pilot` | 2026-11-12 | Decoding subtracts the floor amplitude so white decodes to silence. Encoding unchanged; `0.1-pilot` cards decode under this rule. |

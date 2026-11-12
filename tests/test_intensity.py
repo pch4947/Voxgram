@@ -6,6 +6,7 @@ import pytest
 from voxgram.format import DB_FLOOR, GRID_SHAPE
 from voxgram.intensity import (
     DB_PER_GRAY_LEVEL,
+    gray_to_decibels,
     gray_to_magnitude,
     grid_to_image,
     image_to_grid,
@@ -52,22 +53,47 @@ def test_larger_magnitude_is_never_lighter():
 def test_round_trip_error_is_at_most_half_a_gray_level():
     magnitude = random_magnitude()
     normalized = magnitude / magnitude.max()
-    decoded = gray_to_magnitude(magnitude_to_gray(magnitude))
+    decoded_db = gray_to_decibels(magnitude_to_gray(magnitude))
 
     above_floor = normalized > 10.0 ** (DB_FLOOR / 20.0)
-    error_db = np.abs(20 * np.log10(normalized[above_floor]) - 20 * np.log10(decoded[above_floor]))
+    error_db = np.abs(20 * np.log10(normalized[above_floor]) - decoded_db[above_floor])
     assert error_db.max() <= DB_PER_GRAY_LEVEL / 2 + 1e-9
-    assert np.allclose(decoded[~above_floor], 10.0 ** (DB_FLOOR / 20.0))
+    assert np.all(decoded_db[~above_floor] == DB_FLOOR)
 
 
-def test_decoding_range_and_fractional_values():
+def test_decibel_decoding_range_and_fractional_values():
     gray = np.full(GRID_SHAPE, 127.5)
     gray[0, 0] = 0.0
     gray[0, 1] = 255.0
+    decoded_db = gray_to_decibels(gray)
+    assert decoded_db[0, 0] == 0.0
+    assert decoded_db[0, 1] == DB_FLOOR
+    assert decoded_db[1, 1] == pytest.approx(-30.0)
+
+
+def test_white_decodes_to_silence_and_black_to_the_peak():
+    gray = np.full(GRID_SHAPE, 255.0)
+    gray[0, 0] = 0.0
     decoded = gray_to_magnitude(gray)
     assert decoded[0, 0] == pytest.approx(1.0)
-    assert decoded[0, 1] == pytest.approx(1e-3)
-    assert decoded[1, 1] == pytest.approx(10.0 ** (-30.0 / 20.0))
+    assert np.all(decoded[1:, :] == 0.0)
+
+
+def test_magnitude_decoding_subtracts_the_floor():
+    floor = 10.0 ** (DB_FLOOR / 20.0)
+    gray = np.full(GRID_SHAPE, 127.5)  # -30 dB
+    expected = (10.0 ** (-30.0 / 20.0) - floor) / (1.0 - floor)
+    assert gray_to_magnitude(gray)[0, 0] == pytest.approx(expected)
+
+
+def test_magnitude_decoding_is_monotonic_and_continuous_near_white():
+    gray = np.full(GRID_SHAPE, 255.0)
+    gray[0, :] = np.linspace(0.0, 255.0, GRID_SHAPE[1])
+    row = gray_to_magnitude(gray)[0]
+    assert np.all(np.diff(row) < 0)
+    # Paper white a few levels short of 255 must still be far below the floor.
+    almost_white = np.full(GRID_SHAPE, 250.0)
+    assert gray_to_magnitude(almost_white)[0, 0] < 0.2 * 10.0 ** (DB_FLOOR / 20.0)
 
 
 def test_silent_input_is_rejected():
@@ -89,6 +115,8 @@ def test_invalid_gray_is_rejected(bad):
     gray[3, 3] = bad
     with pytest.raises(ValueError):
         gray_to_magnitude(gray)
+    with pytest.raises(ValueError):
+        gray_to_decibels(gray)
 
 
 def test_wrong_shape_is_rejected():
