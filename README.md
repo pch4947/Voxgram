@@ -14,7 +14,9 @@ spectrogram values in spite of that. The image-processing pipeline is
 implemented by hand; existing libraries are used only for I/O, linear algebra
 and the audio backend.
 
-> **Status:** repository bootstrap. No pipeline stage is implemented yet.
+> **Status:** the encoder and the digital baseline (recording to grayscale
+> image and back, without printing) are implemented. Card layout, marker
+> detection, geometric and brightness correction are not.
 > Code freeze is Thursday 26 November 2026; source code submission is
 > Saturday 28 November 2026.
 > See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) for milestones.
@@ -60,6 +62,18 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+Encode a recording, or run the full digital round trip:
+
+```powershell
+python -m voxgram.encoder recording.wav -o spectrogram.png
+python -m voxgram.baseline recording.wav -o outputs/baseline/recording
+```
+
+The recording must be 3.0 s or shorter; add `--truncate` to keep only the
+first 3.0 s of a longer one. The baseline writes the spectrogram image and
+three WAV files to compare by ear: the original, Griffin-Lim from the exact
+magnitude, and Griffin-Lim from the 8-bit image.
+
 Run the checks that CI runs:
 
 ```powershell
@@ -95,13 +109,19 @@ any other ready-made vision routine.
 ```
 .github/            Issue and PR templates, CI workflow
 docs/               Project plan, card format, git convention
-src/voxgram/        Python package (format constants so far)
+src/voxgram/        Python package
+  format.py           Shared format constants
+  intensity.py        Magnitude <-> grayscale mapping, both directions
+  audio_backend.py    Audio I/O, Librosa STFT and Griffin-Lim
+  imageio.py          Image read/write (the only OpenCV use)
+  encoder.py          Recording -> spectrogram image
+  baseline.py         Digital round trip without printing
 tests/              Unit tests
 tools/              Repository tooling (library boundary check)
 ```
 
-Pipeline modules will be added under `src/voxgram/` by their owners as the
-milestones progress. The planned module split is in
+The remaining pipeline modules will be added under `src/voxgram/` by their
+owners as the milestones progress. The planned module split is in
 [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md#5-module-ownership).
 
 ## Team

@@ -50,8 +50,11 @@ This is a course requirement, not a style preference. See the
   `IMREAD_*` / `IMWRITE_*` flags.
 - NumPy is for arrays, arithmetic and solving linear systems
   (`np.linalg.solve`, `np.linalg.svd`, `np.linalg.lstsq`).
-- Librosa is for the STFT and Griffin-Lim only, always with the settings in
-  `voxgram.format`.
+- Librosa is for the audio side only: the STFT and Griffin-Lim, always with
+  the settings in `voxgram.format`, plus resampling a recording to 16 kHz when
+  it is loaded. Call it through `voxgram.audio_backend`, not directly.
+- Read and write image files through `voxgram.imageio`, which is the only
+  module that imports OpenCV.
 - Do not import `skimage` or `scipy.ndimage`. The report does not name them,
   but they provide the same ready-made routines that it excludes.
 
@@ -59,9 +62,9 @@ This is a course requirement, not a style preference. See the
 believe a call should be allowed, raise it with the team before changing the
 allowlist.
 
-On Windows, `cv2.imread` can return `None` without an error for paths that
-contain non-ASCII characters, such as Korean folder names. If that happens,
-read the file with `cv2.imdecode(np.fromfile(path, dtype=np.uint8), flags)`.
+`voxgram.imageio` reads and writes through NumPy buffers, because on Windows
+`cv2.imread` can return `None` without an error for paths that contain
+non-ASCII characters, such as Korean folder names.
 
 ### Use the shared format constants
 
