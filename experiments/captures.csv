@@ -1,0 +1,1 @@
+capture_id,date,session,card,format_version,phone,tilt_deg,tilt_axis,roll_deg,light,lux_min,lux_max,distance_cm,ev_comp,setup_ok,commit,stages,detect_ok,mae_gray,mae_db,intelligibility,notes
