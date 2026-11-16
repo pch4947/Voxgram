@@ -243,7 +243,7 @@ outside image read/write.
 | 3 | Marker shape and size, orientation cue, patch count and gray levels, exact canonical coordinates | M2 |
 | 4 | Final values of duration, grid density, dynamic range and print size | After the M1 and M3 gates |
 | 5 | Evaluation metrics and the intelligibility procedure | Before M5 |
-| 6 | Where raw photographs and voice recordings are stored. They are kept out of this public repository by default. | Before the first capture session |
+| 6 | Where raw photographs and voice recordings are stored. They are kept out of this public repository by default. : Decided in [experiments/README.md](../experiments/README.md#5-where-raw-data-is-stored): private shared Google Drive folder, local copy in data/. Raw photographs and voice recordings stay out of this public repository.| Before the first capture session |
 | 7 | Printer, paper and phone used for the reference captures | M2 |
 | 8 | Repository license | Before the final submission |
 
