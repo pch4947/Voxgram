@@ -117,7 +117,7 @@ captures the image. The format parameters are in
 
 | Area | Owner | Planned module (**Proposed** names) |
 | --- | --- | --- |
-| Audio format, encoder, digital baseline | 박창훈 | `format.py`, `intensity.py`, `audio_backend.py`, `imageio.py`, `encoder.py`, `baseline.py` (implemented) |
+| Audio format, encoder, digital baseline | 박창훈 | `format.py`, `intensity.py`, `audio_backend.py`, `imageio.py`, `encoder.py`, `baseline.py`, `card.py`, `synthetic.py` (implemented) |
 | Evaluation scripts | 박창훈 | `evaluation.py` |
 | Thresholding, connected components, marker detection | 강예원 | `detection.py` |
 | Homography and resampling | Torval Ripel | `geometry.py` |

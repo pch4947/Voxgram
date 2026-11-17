@@ -14,9 +14,10 @@ spectrogram values in spite of that. The image-processing pipeline is
 implemented by hand; existing libraries are used only for I/O, linear algebra
 and the audio backend.
 
-> **Status:** the encoder and the digital baseline (recording to grayscale
-> image and back, without printing) are implemented. Card layout, marker
-> detection, geometric and brightness correction are not.
+> **Status:** the encoder, the digital baseline (recording to grayscale image
+> and back, without printing) and the printable card are implemented. The
+> card layout is a draft under discussion in issue #3. Marker detection,
+> geometric and brightness correction are not implemented.
 > Code freeze is Thursday 26 November 2026; source code submission is
 > Saturday 28 November 2026.
 > See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) for milestones.
@@ -43,7 +44,7 @@ keeps its intensity values through rectification and extraction.
 | Magnitude grid | 257 frequency bins x 376 frames |
 | Axes | Linear frequency, low frequency at the bottom, time left to right |
 | Dynamic range | Peak-normalized, -60 to 0 dB, darker means larger magnitude |
-| Card | About 150 x 100 mm, with a 110 x 75 mm spectrogram region |
+| Card | 150 x 100 mm, with a 110 x 75 mm spectrogram region |
 
 These values are provisional until the first pilot validates them. The full
 specification is in [docs/CARD_FORMAT.md](docs/CARD_FORMAT.md), and the shared
@@ -62,12 +63,17 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Encode a recording, or run the full digital round trip:
+Encode a recording, make a printable card, or run the full digital round
+trip:
 
 ```powershell
 python -m voxgram.encoder recording.wav -o spectrogram.png
+python -m voxgram.encoder recording.wav --card card.png
 python -m voxgram.baseline recording.wav -o outputs/baseline/recording
 ```
+
+Print `card.png` at actual size with "fit to page" off. The centres of the two
+top markers must then be 134 mm apart.
 
 The recording must be 3.0 s or shorter; add `--truncate` to keep only the
 first 3.0 s of a longer one. The baseline writes the spectrogram image and
@@ -115,6 +121,8 @@ src/voxgram/        Python package
   audio_backend.py    Audio I/O, Librosa STFT and Griffin-Lim
   imageio.py          Image read/write (the only OpenCV use)
   encoder.py          Recording -> spectrogram image
+  card.py             Card layout and print-ready rendering
+  synthetic.py        Synthetic photographs with known ground truth, for tests
   baseline.py         Digital round trip without printing
 tests/              Unit tests
 tools/              Repository tooling (library boundary check)
