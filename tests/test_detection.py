@@ -1,12 +1,16 @@
-"""Tests for grayscale conversion and thresholding."""
+"""Tests for grayscale conversion, thresholding and labelling."""
+
+from collections import deque
 
 import numpy as np
 import pytest
 
 from voxgram.detection import (
     box_mean,
+    connected_components,
     default_window,
     integral_image,
+    label_components,
     otsu_threshold,
     threshold_global,
     threshold_local_mean,
@@ -133,3 +137,142 @@ def test_strong_gradient_is_handled_by_the_local_mean_threshold():
 def test_local_mean_keeps_blank_paper_noise_out_with_an_offset():
     gray = 230.0 + np.random.default_rng(2).normal(0.0, 2.0, size=(60, 60))
     assert not threshold_local_mean(gray, window=15, offset=10.0).any()
+
+
+# ---------------------------------------------------------------------------
+# Connected components (#5)
+# ---------------------------------------------------------------------------
+
+
+def as_binary(rows):
+    return np.array([[ch == "#" for ch in row] for row in rows])
+
+
+def flood_fill_labels(binary, connectivity):
+    """Reference labelling by breadth-first search, raster order of first pixel."""
+    height, width = binary.shape
+    labels = np.zeros((height, width), dtype=np.int32)
+    if connectivity == 4:
+        steps = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    else:
+        steps = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if (dr, dc) != (0, 0)]
+    count = 0
+    for r in range(height):
+        for c in range(width):
+            if binary[r, c] and not labels[r, c]:
+                count += 1
+                labels[r, c] = count
+                queue = deque([(r, c)])
+                while queue:
+                    pr, pc = queue.popleft()
+                    for dr, dc in steps:
+                        nr, nc = pr + dr, pc + dc
+                        inside = 0 <= nr < height and 0 <= nc < width
+                        if inside and binary[nr, nc] and not labels[nr, nc]:
+                            labels[nr, nc] = count
+                            queue.append((nr, nc))
+    return labels
+
+
+def test_separate_blobs_and_their_statistics():
+    binary = as_binary(
+        [
+            "##....",
+            "##..#.",
+            "....##",
+            "......",
+        ]
+    )
+    labels, components = label_components(binary, connectivity=4)
+    assert components.count == 2
+    np.testing.assert_array_equal(components.area, [4, 3])
+    np.testing.assert_array_equal(components.x_min, [0, 4])
+    np.testing.assert_array_equal(components.x_max, [1, 5])
+    np.testing.assert_array_equal(components.y_min, [0, 1])
+    np.testing.assert_array_equal(components.y_max, [1, 2])
+    np.testing.assert_allclose(components.centroid, [[0.5, 0.5], [13 / 3, 5 / 3]])
+    np.testing.assert_allclose(components.fill_ratio, [1.0, 0.75])
+    np.testing.assert_array_equal(labels[0], [1, 1, 0, 0, 0, 0])
+    np.testing.assert_array_equal(labels[2], [0, 0, 0, 0, 2, 2])
+
+
+def test_u_shape_merges_two_provisional_labels():
+    binary = as_binary(
+        [
+            "#...#",
+            "#...#",
+            "#####",
+        ]
+    )
+    labels, components = label_components(binary)
+    assert components.count == 1
+    assert components.area[0] == 9
+    assert set(np.unique(labels)) == {0, 1}
+
+
+def test_diagonal_neighbours_depend_on_connectivity():
+    binary = as_binary(
+        [
+            "#..",
+            ".#.",
+            "..#",
+        ]
+    )
+    assert connected_components(binary, connectivity=4).count == 3
+    assert connected_components(binary, connectivity=8).count == 1
+
+
+def test_blob_touching_the_image_border():
+    binary = np.zeros((5, 6), dtype=bool)
+    binary[:, 0] = True
+    binary[4, :] = True
+    binary[0, 5] = True
+    components = connected_components(binary)
+    assert components.count == 2
+    np.testing.assert_array_equal(components.area, [10, 1])
+    np.testing.assert_array_equal(components.x_max, [5, 5])
+
+
+def test_empty_and_full_images():
+    empty = connected_components(np.zeros((4, 7), dtype=bool))
+    assert empty.count == 0
+    assert empty.centroid.shape == (0, 2)
+    labels, full = label_components(np.ones((4, 7), dtype=bool))
+    assert full.count == 1
+    assert full.area[0] == 28
+    assert np.all(labels == 1)
+
+
+def test_ring_is_one_component_with_a_hole():
+    binary = as_binary(
+        [
+            "#####",
+            "#...#",
+            "#.#.#",
+            "#...#",
+            "#####",
+        ]
+    )
+    components = connected_components(binary)
+    assert components.count == 2
+    np.testing.assert_array_equal(components.area, [16, 1])
+    np.testing.assert_allclose(components.centroid, [[2.0, 2.0], [2.0, 2.0]])
+
+
+@pytest.mark.parametrize("connectivity", [4, 8])
+@pytest.mark.parametrize("seed", range(6))
+def test_labels_match_flood_fill_on_random_images(connectivity, seed):
+    rng = np.random.default_rng(seed)
+    binary = rng.random((37, 53)) < [0.3, 0.45, 0.6][seed % 3]
+    labels, components = label_components(binary, connectivity=connectivity)
+    reference = flood_fill_labels(binary, connectivity)
+    np.testing.assert_array_equal(labels, reference)
+    assert components.count == reference.max()
+    np.testing.assert_array_equal(components.area, np.bincount(reference.ravel())[1:])
+
+
+def test_rejects_bad_connectivity_and_shape():
+    with pytest.raises(ValueError):
+        connected_components(np.zeros((3, 3), dtype=bool), connectivity=6)
+    with pytest.raises(ValueError):
+        connected_components(np.zeros(9, dtype=bool))

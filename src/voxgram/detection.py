@@ -1,7 +1,8 @@
-"""Marker detection: grayscale conversion and thresholding.
+"""Marker detection: grayscale conversion, thresholding, connected components.
 
 This is the first stage of the decoder. It turns a photograph into a grayscale
-image and makes a binary working image from it for marker detection.
+image, makes a binary working image from it and labels the dark regions of
+that binary image.
 
 The binary image exists only for detection. The grayscale image returned by
 :func:`to_grayscale` is what rectification and extraction work on, unchanged.
@@ -10,6 +11,9 @@ Conventions
 -----------
 * Gray values are float64 in [0, 255], 0 black and 255 white.
 * In binary images ``True`` means dark: marker, patch or spectrogram ink.
+* Points are ``(x, y)`` with ``x`` the column and ``y`` the row, and pixel
+  centres are at integer coordinates (docs/CARD_FORMAT.md, "Pixel
+  conventions"). A component's centroid is the mean of its pixel centres.
 
 Library boundary: everything here is written with NumPy arithmetic only. No
 OpenCV, SciPy or scikit-image routine is used.
@@ -17,14 +21,19 @@ OpenCV, SciPy or scikit-image routine is used.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from voxgram.format import GRAY_BLACK, GRAY_WHITE
 
 __all__ = [
+    "Components",
     "box_mean",
+    "connected_components",
     "default_window",
     "integral_image",
+    "label_components",
     "otsu_threshold",
     "threshold_global",
     "threshold_local_mean",
@@ -246,3 +255,240 @@ def default_window(shape: tuple[int, ...]) -> int:
 def _check_window(window: int) -> None:
     if int(window) != window or window < 1 or window % 2 == 0:
         raise ValueError(f"window must be a positive odd integer, got {window}")
+
+
+# ---------------------------------------------------------------------------
+# Connected components (issue #5)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Components:
+    """Statistics of the connected components of a binary image.
+
+    Component ``k`` is described by element ``k`` of every array. Components
+    are numbered in raster order of their first pixel (top to bottom, then
+    left to right); in a label image component ``k`` has label ``k + 1``.
+
+    Attributes:
+        area: (K,) int64, number of pixels.
+        x_min, x_max, y_min, y_max: (K,) int64 bounding box. Both ends are
+            inclusive pixel indices.
+        centroid: (K, 2) float64 ``(x, y)``, the mean of the pixel centres.
+    """
+
+    area: np.ndarray
+    x_min: np.ndarray
+    x_max: np.ndarray
+    y_min: np.ndarray
+    y_max: np.ndarray
+    centroid: np.ndarray
+
+    @property
+    def count(self) -> int:
+        return int(self.area.size)
+
+    @property
+    def width(self) -> np.ndarray:
+        """(K,) int64 bounding-box width in pixels."""
+        return self.x_max - self.x_min + 1
+
+    @property
+    def height(self) -> np.ndarray:
+        """(K,) int64 bounding-box height in pixels."""
+        return self.y_max - self.y_min + 1
+
+    @property
+    def fill_ratio(self) -> np.ndarray:
+        """(K,) float64 area divided by bounding-box area, in (0, 1]."""
+        return self.area / (self.width * self.height)
+
+    @property
+    def aspect_ratio(self) -> np.ndarray:
+        """(K,) float64 longer bounding-box side over shorter, at least 1."""
+        width = self.width
+        height = self.height
+        return np.maximum(width, height) / np.minimum(width, height)
+
+
+def _check_connectivity(connectivity: int) -> None:
+    if connectivity not in (4, 8):
+        raise ValueError(f"connectivity must be 4 or 8, got {connectivity}")
+
+
+def _as_binary(binary: np.ndarray) -> np.ndarray:
+    binary = np.asarray(binary, dtype=bool)
+    if binary.ndim != 2:
+        raise ValueError(f"expected a (H, W) binary image, got shape {binary.shape}")
+    return binary
+
+
+def _find_runs(binary: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Horizontal runs of ``True`` pixels.
+
+    Returns:
+        ``(rows, starts, ends)``, int64 arrays of equal length in raster order.
+        Run ``i`` covers columns ``starts[i] .. ends[i] - 1`` of row ``rows[i]``.
+    """
+    height, width = binary.shape
+    padded = np.zeros((height, width + 2), dtype=np.int8)
+    padded[:, 1:-1] = binary
+    step = np.diff(padded, axis=1)
+    rows, starts = np.nonzero(step == 1)
+    _, ends = np.nonzero(step == -1)
+    return rows.astype(np.int64), starts.astype(np.int64), ends.astype(np.int64)
+
+
+def _touching_run_pairs(
+    rows: np.ndarray, starts: np.ndarray, ends: np.ndarray, width: int, connectivity: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Pairs of runs in consecutive rows that touch.
+
+    Run ``a`` in row ``r - 1`` and run ``b`` in row ``r`` touch when their
+    column ranges overlap (4-connectivity) or overlap after widening by one
+    column (8-connectivity, diagonal neighbours).
+
+    Every row's runs are sorted and disjoint, so the runs above ``b`` that
+    touch it are a contiguous block, found by binary search. Keys
+    ``row * (width + 2) + column`` make one sorted array of all rows.
+    """
+    stride = width + 2
+    reach = 1 if connectivity == 8 else 0
+    start_key = rows * stride + starts
+    end_key = rows * stride + ends
+    above = (rows - 1) * stride
+    # a touches b iff  a.start <= b.end - 1 + reach  and  a.end >= b.start + 1 - reach.
+    first = np.searchsorted(end_key, above + starts + 1 - reach, side="left")
+    stop = np.searchsorted(start_key, above + ends - 1 + reach, side="right")
+    counts = np.maximum(stop - first, 0)
+
+    total = int(counts.sum())
+    lower = np.repeat(np.arange(rows.size), counts)
+    block_start = np.repeat(np.cumsum(counts) - counts, counts)
+    upper = np.repeat(first, counts) + (np.arange(total) - block_start)
+    return upper, lower
+
+
+def _resolve_equivalences(count: int, a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, int]:
+    """Merge equivalent provisional labels with union-find.
+
+    ``parent`` is the union-find forest over the provisional labels. Each
+    round compresses every path to its root, then hooks the larger root of
+    every still-separate equivalence pair onto the smaller one. Parents always
+    have smaller indices than their children, so the forest stays acyclic.
+    The rounds are vectorized over all pairs at once.
+
+    Returns:
+        ``(final, k)``: the final label 0..k-1 of every provisional label,
+        numbered in increasing order of the smallest provisional label in each
+        class, and the number of classes.
+    """
+    parent = np.arange(count)
+    while True:
+        while True:
+            grandparent = parent[parent]
+            if np.array_equal(grandparent, parent):
+                break
+            parent = grandparent
+        root_a = parent[a]
+        root_b = parent[b]
+        separate = root_a != root_b
+        if not separate.any():
+            break
+        a = a[separate]
+        b = b[separate]
+        root_a = root_a[separate]
+        root_b = root_b[separate]
+        np.minimum.at(parent, np.maximum(root_a, root_b), np.minimum(root_a, root_b))
+    roots, final = np.unique(parent, return_inverse=True)
+    return final.ravel(), int(roots.size)
+
+
+def _label_runs(
+    binary: np.ndarray, connectivity: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    """Two-pass labelling over runs. Returns runs, their labels and the count."""
+    _check_connectivity(connectivity)
+    rows, starts, ends = _find_runs(binary)
+    # First pass: every run gets a provisional label (its index), and every
+    # pair of touching runs is recorded as an equivalence.
+    upper, lower = _touching_run_pairs(rows, starts, ends, binary.shape[1], connectivity)
+    # Resolve the equivalences; the second pass is the lookup in `labels`.
+    labels, count = _resolve_equivalences(rows.size, upper, lower)
+    return rows, starts, ends, labels, count
+
+
+def _run_statistics(
+    rows: np.ndarray, starts: np.ndarray, ends: np.ndarray, labels: np.ndarray, count: int
+) -> Components:
+    lengths = ends - starts
+    area = np.bincount(labels, weights=lengths, minlength=count)
+    # Sum of the column indices starts..ends-1 is length * (start + end - 1) / 2.
+    sum_x = np.bincount(labels, weights=lengths * (starts + ends - 1) / 2, minlength=count)
+    sum_y = np.bincount(labels, weights=lengths * rows, minlength=count)
+
+    big = np.iinfo(np.int64).max
+    x_min = np.full(count, big, dtype=np.int64)
+    y_min = np.full(count, big, dtype=np.int64)
+    x_max = np.full(count, -1, dtype=np.int64)
+    y_max = np.full(count, -1, dtype=np.int64)
+    np.minimum.at(x_min, labels, starts)
+    np.maximum.at(x_max, labels, ends - 1)
+    np.minimum.at(y_min, labels, rows)
+    np.maximum.at(y_max, labels, rows)
+
+    if count:
+        centroid = np.column_stack([sum_x / area, sum_y / area])
+    else:
+        centroid = np.zeros((0, 2), dtype=np.float64)
+    return Components(
+        area=area.astype(np.int64),
+        x_min=x_min,
+        x_max=x_max,
+        y_min=y_min,
+        y_max=y_max,
+        centroid=centroid,
+    )
+
+
+def connected_components(binary: np.ndarray, connectivity: int = 8) -> Components:
+    """Statistics of the connected regions of ``True`` pixels.
+
+    Two-pass labelling over horizontal runs rather than single pixels. The
+    first pass gives every run a provisional label and records which runs in
+    consecutive rows touch. The equivalences are resolved with union-find,
+    and the second pass looks up the final label of every run. Working on
+    runs keeps the cost proportional to the number of runs, not of pixels.
+
+    Args:
+        binary: (H, W) bool, ``True`` for foreground.
+        connectivity: 8 (default) joins pixels that share an edge or a
+            corner; 4 joins only pixels that share an edge.
+
+    Returns:
+        :class:`Components`, in raster order of the first pixel.
+    """
+    binary = _as_binary(binary)
+    rows, starts, ends, labels, count = _label_runs(binary, connectivity)
+    return _run_statistics(rows, starts, ends, labels, count)
+
+
+def label_components(binary: np.ndarray, connectivity: int = 8) -> tuple[np.ndarray, Components]:
+    """Label image and statistics of the connected regions of ``True`` pixels.
+
+    Same algorithm as :func:`connected_components`; this also paints the
+    label image, which is useful for inspection and tests.
+
+    Returns:
+        ``(labels, components)``. ``labels`` is (H, W) int32 with 0 for
+        background and ``k + 1`` for component ``k``.
+    """
+    binary = _as_binary(binary)
+    rows, starts, ends, labels, count = _label_runs(binary, connectivity)
+    height, width = binary.shape
+    image = np.zeros(height * width, dtype=np.int32)
+    lengths = ends - starts
+    run_offset = np.repeat(np.cumsum(lengths) - lengths, lengths)
+    pixels = np.repeat(rows * width + starts, lengths) + (np.arange(lengths.sum()) - run_offset)
+    image[pixels] = np.repeat(labels + 1, lengths)
+    return image.reshape(height, width), _run_statistics(rows, starts, ends, labels, count)
