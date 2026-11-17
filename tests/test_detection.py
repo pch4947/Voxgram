@@ -1,21 +1,80 @@
-"""Tests for grayscale conversion, thresholding and labelling."""
+"""Tests for grayscale conversion, thresholding, labelling and marker detection."""
 
 from collections import deque
+from functools import cache
 
 import numpy as np
 import pytest
 
+from voxgram import card, detection, synthetic
+from voxgram import format as fmt
 from voxgram.detection import (
+    MarkerCandidate,
+    MarkerDetectionError,
     box_mean,
     connected_components,
     default_window,
+    detect_markers,
+    find_marker_candidates,
     integral_image,
     label_components,
     otsu_threshold,
+    select_markers,
     threshold_global,
     threshold_local_mean,
     to_grayscale,
 )
+
+# ---------------------------------------------------------------------------
+# Synthetic photographs of the card, from voxgram.card and voxgram.synthetic
+# ---------------------------------------------------------------------------
+
+PHOTO_SHAPE = (1000, 1000)
+# 5 px/mm: markers about 35 px wide, the orientation core about 7 px.
+SCALE = 5.0
+PERSPECTIVE = (0.0006, -0.0004)
+
+
+def spectrogram_image(seed: int = 0) -> np.ndarray:
+    """Random cells: a busy data region full of dark blobs, the hard case."""
+    return np.random.default_rng(seed).integers(0, 256, size=fmt.GRID_SHAPE, dtype=np.uint8)
+
+
+def view_homography(rotation_deg: float) -> np.ndarray:
+    return synthetic.make_homography(
+        scale=SCALE, center=(500.0, 500.0), rotation_deg=rotation_deg, perspective=PERSPECTIVE
+    )
+
+
+@cache
+def _rendered(rotation_deg: float) -> np.ndarray:
+    photo = synthetic.render_view(
+        spectrogram_image(), view_homography(rotation_deg), PHOTO_SHAPE, supersample=2
+    )
+    photo.setflags(write=False)
+    return photo
+
+
+def card_view(rotation_deg: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+    """A photograph of the card and the true marker centres in it, in card order."""
+    homography = view_homography(rotation_deg)
+    truth = synthetic.project_points(homography, card.marker_centers_mm())
+    return _rendered(rotation_deg).copy(), truth
+
+
+def cover_marker(photo: np.ndarray, rotation_deg: float, index: int) -> np.ndarray:
+    """Paint white paper over one marker and 1 mm around it, like a sticker."""
+    inverse = np.linalg.inv(view_homography(rotation_deg))
+    px, py = np.meshgrid(np.arange(photo.shape[1]), np.arange(photo.shape[0]))
+    w = inverse[2, 0] * px + inverse[2, 1] * py + inverse[2, 2]
+    x = (inverse[0, 0] * px + inverse[0, 1] * py + inverse[0, 2]) / w
+    y = (inverse[1, 0] * px + inverse[1, 1] * py + inverse[1, 2]) / w
+    cx, cy = fmt.MARKER_CENTERS_MM[index]
+    covered = np.maximum(np.abs(x - cx), np.abs(y - cy)) < fmt.MARKER_SIZE_MM / 2 + 1.0
+    photo = photo.copy()
+    photo[covered] = fmt.GRAY_WHITE
+    return photo
+
 
 # ---------------------------------------------------------------------------
 # Grayscale conversion (#4)
@@ -276,3 +335,115 @@ def test_rejects_bad_connectivity_and_shape():
         connected_components(np.zeros((3, 3), dtype=bool), connectivity=6)
     with pytest.raises(ValueError):
         connected_components(np.zeros(9, dtype=bool))
+
+
+# ---------------------------------------------------------------------------
+# Marker detection (#6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270, 37, 45])
+def test_markers_found_in_card_order_for_any_rotation(rotation):
+    photo, truth = card_view(rotation_deg=rotation)
+    markers = detect_markers(photo)
+    assert markers.shape == (4, 2)
+    np.testing.assert_allclose(markers, truth, atol=0.25)
+
+
+def test_markers_found_from_a_bgr_photograph():
+    photo, truth = card_view(rotation_deg=12)
+    bgr = synthetic.as_bgr(photo)
+    np.testing.assert_allclose(detect_markers(to_grayscale(bgr)), truth, atol=0.25)
+
+
+@pytest.mark.parametrize("angle", [0.0, 90.0, 225.0])
+def test_markers_found_under_an_illumination_gradient(angle):
+    photo, truth = card_view(rotation_deg=8)
+    gain = synthetic.illumination_gradient(PHOTO_SHAPE, low=0.35, high=1.0, angle_deg=angle)
+    np.testing.assert_allclose(detect_markers(photo * gain), truth, atol=0.25)
+
+
+def test_markers_found_through_a_tone_curve_and_gradient():
+    photo, truth = card_view(rotation_deg=-15)
+    gain = synthetic.illumination_gradient(PHOTO_SHAPE, low=0.5, high=1.0, angle_deg=30.0)
+    photo = synthetic.apply_tone_curve(photo * gain, gamma=1.8)
+    np.testing.assert_allclose(detect_markers(photo), truth, atol=0.25)
+
+
+def test_global_baseline_finds_markers_in_even_light():
+    photo, truth = card_view(rotation_deg=20)
+    np.testing.assert_allclose(detect_markers(photo, method="global"), truth, atol=0.25)
+
+
+@pytest.mark.parametrize("covered", range(4))
+def test_covered_marker_is_reported_not_guessed(covered):
+    photo, _ = card_view(rotation_deg=0)
+    with pytest.raises(MarkerDetectionError, match="found 3"):
+        detect_markers(cover_marker(photo, 0, covered))
+
+
+def test_card_without_orientation_cue_is_rejected(monkeypatch):
+    # A card printed with four identical markers has no orientation.
+    monkeypatch.setattr(card, "MARKER_CUE_CORE_MM", fmt.MARKER_CORE_MM)
+    homography = view_homography(0.0)
+    photo = synthetic.render_view(spectrogram_image(), homography, PHOTO_SHAPE, supersample=2)
+    with pytest.raises(MarkerDetectionError, match="form a card"):
+        detect_markers(photo)
+
+
+def test_blank_image_is_rejected():
+    with pytest.raises(MarkerDetectionError, match="found 0"):
+        detect_markers(np.full((200, 300), 230.0))
+
+
+def test_unknown_method_is_rejected():
+    with pytest.raises(ValueError, match="method"):
+        detect_markers(np.full((50, 50), 230.0), method="otsu")
+
+
+def test_candidates_report_frame_to_core_ratios():
+    photo, _ = card_view()
+    binary = threshold_local_mean(photo, default_window(photo.shape), 10.0)
+    ratios = sorted(c.area_ratio for c in find_marker_candidates(binary))
+    # Three finders and the orientation marker, with the ratios the card prints.
+    assert len(ratios) == 4
+    np.testing.assert_allclose(ratios[:3], detection.FINDER_AREA_RATIO, rtol=0.2)
+    assert ratios[3] == pytest.approx(detection.CUE_AREA_RATIO, rel=0.3)
+
+
+def test_expected_ratios_follow_the_card_format():
+    frame = fmt.MARKER_SIZE_MM**2 - fmt.MARKER_GAP_MM**2
+    assert detection.FINDER_AREA_RATIO == pytest.approx(frame / fmt.MARKER_CORE_MM**2)
+    assert detection.CUE_AREA_RATIO == pytest.approx(frame / fmt.MARKER_CUE_CORE_MM**2)
+    # The two kinds must not overlap once the measurement tolerance is applied.
+    tolerance = detection.RATIO_TOLERANCE
+    assert detection.FINDER_AREA_RATIO * tolerance < detection.CUE_AREA_RATIO / tolerance
+
+
+FINDER, CUE = detection.FINDER_AREA_RATIO, detection.CUE_AREA_RATIO
+
+
+def candidate(x, y, ratio=FINDER, frame_area=600):
+    return MarkerCandidate((x, y), frame_area, round(frame_area / ratio), 35.0)
+
+
+def cue_at(index):
+    return CUE if index == fmt.CUE_MARKER_INDEX else FINDER
+
+
+def test_select_markers_rejects_two_equally_good_cards():
+    corners = [(100, 100), (800, 100), (800, 500), (100, 500)]
+    first = [candidate(*p, ratio=cue_at(i)) for i, p in enumerate(corners)]
+    second = [
+        candidate(x + 50, y + 600, ratio=r.area_ratio)
+        for (x, y), r in zip(corners, first, strict=True)
+    ]
+    with pytest.raises(MarkerDetectionError, match="refusing to guess"):
+        select_markers(first + second)
+
+
+def test_select_markers_rejects_collinear_markers():
+    points = [(100, 100), (400, 100), (700, 100), (1000, 100)]
+    group = [candidate(*p, ratio=cue_at(i)) for i, p in enumerate(points)]
+    with pytest.raises(MarkerDetectionError, match="form a card"):
+        select_markers(group)
