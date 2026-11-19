@@ -171,3 +171,81 @@ def interpolate_reference_fields(
     white_field = _interpolate_reference(positions, centers[white_mask], measurements[white_mask])
 
     return (black_field.reshape(original_shape), white_field.reshape(original_shape))
+
+
+def normalize_brightness(
+    image: np.ndarray,
+    black_field: np.ndarray,
+    white_field: np.ndarray,
+    *,
+    min_contrast: float = 1.0,
+    return_mask: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Normalize grayscale intensities using local black/white references.
+
+    Args:
+        image: A 2D array of photographed grayscale intensities.
+        black_field: Local photographed black reference values.
+        white_field: Local photographed white reference values.
+        min_contrast: Minimum acceptable difference between white
+            and black references, in grayscale intensity units.
+        return_mask: Whether to also return a boolean validity mask.
+
+    Returns:
+        A float64 image normalized to the encoded 0-255 scale.
+        Invalid positions are assigned NaN.
+
+        If return_mask is True, also returns a boolean array
+        identifying positions with sufficient local contrast.
+
+    Raises:
+        ValueError: If image data, reference fields, or parameters
+            have invalid shapes or contain non-finite values.
+    """
+    image = np.asarray(image, dtype=np.float64)
+    black_field = np.asarray(black_field, dtype=np.float64)
+    white_field = np.asarray(white_field, dtype=np.float64)
+
+    if image.ndim != 2:
+        raise ValueError("image must be a 2D grayscale array")
+
+    if not np.all(np.isfinite(image)):
+        raise ValueError("image must contain finite values")
+
+    if not np.isfinite(min_contrast) or min_contrast <= 0:
+        raise ValueError("min_contrast must be positive and finite")
+
+    # Broadcast reference fields to the image dimensions.
+    try:
+        black_field = np.broadcast_to(black_field, image.shape)
+        white_field = np.broadcast_to(white_field, image.shape)
+    except ValueError as exc:
+        raise ValueError("reference fields must be compatible with image shape") from exc
+
+    if not np.all(np.isfinite(black_field)):
+        raise ValueError("black reference must contain finite values")
+
+    if not np.all(np.isfinite(white_field)):
+        raise ValueError("white reference must contain finite values")
+
+    # Calculate the local grayscale contrast.
+    contrast = white_field - black_field
+
+    # Reject locations where contrast is too small or reversed.
+    valid = contrast >= min_contrast
+
+    # Allocate output with NaN for invalid locations.
+    normalized = np.full(image.shape, np.nan, dtype=np.float64)
+
+    # Avoid division at invalid positions.
+    np.divide(
+        255.0 * (image - black_field),
+        contrast,
+        out=normalized,
+        where=valid,
+    )
+
+    if return_mask:
+        return normalized, valid
+
+    return normalized
