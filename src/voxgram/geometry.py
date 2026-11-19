@@ -140,3 +140,55 @@ def estimate_homography(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
         h /= h[2, 2]
 
     return h
+
+
+def apply_homography(h: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Transform an array of 2D points using a homography matrix.
+
+    Args:
+        h: A (3, 3) homography matrix.
+        points: An (N, 2) array of source (x, y) coordinates.
+
+    Returns:
+        An (N, 2) float64 array of transformed coordinates.
+
+    Raises:
+        ValueError: If the inputs have invalid shapes, contain non-finite
+            values, or a point maps to infinity (zero denominator).
+    """
+    h = np.asarray(h, dtype=np.float64)
+    points = np.asarray(points, dtype=np.float64)
+
+    # Validate the homography matrix.
+    if h.shape != (3, 3) or not np.all(np.isfinite(h)):
+        raise ValueError("h must be a finite (3, 3) matrix")
+
+    # Validate the points array.
+    if points.ndim != 2 or points.shape[1] != 2:
+        raise ValueError("points must have shape (N, 2)")
+
+    if not np.all(np.isfinite(points)):
+        raise ValueError("points must contain only finite coordinates")
+
+    # Convert Cartesian coordinates to homogeneous coordinates.
+    homogeneous = np.column_stack((points, np.ones(len(points))))
+
+    # Apply the homography to all points.
+    transformed = homogeneous @ h.T
+
+    # Extract the homogeneous denominator.
+    denominator = transformed[:, 2]
+
+    # Use a scale-relative tolerance because H has arbitrary scale.
+    row_scale = np.sum(np.abs(homogeneous) * np.abs(h[2]), axis=1)
+
+    if np.any(np.abs(denominator) <= 1e-12 * row_scale):
+        raise ValueError("homography maps a point to infinity (zero denominator)")
+
+    # Convert back to Cartesian coordinates.
+    result = transformed[:, :2] / denominator[:, None]
+
+    if not np.all(np.isfinite(result)):
+        raise ValueError("homography produced non-finite coordinates")
+
+    return result
