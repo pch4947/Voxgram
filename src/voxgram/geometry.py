@@ -192,3 +192,153 @@ def apply_homography(h: np.ndarray, points: np.ndarray) -> np.ndarray:
         raise ValueError("homography produced non-finite coordinates")
 
     return result
+
+
+def sample_bilinear(
+    image: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    fill_value: float = np.nan,
+    return_mask: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Sample a grayscale image at floating-point pixel coordinates.
+
+    Pixel centers lie at integer coordinates, with (0, 0) at the
+    top-left pixel center. Coordinates outside the image receive
+    the specified fill value.
+
+    Args:
+        image: A non-empty 2D grayscale image.
+        x: Horizontal sampling coordinates (columns).
+        y: Vertical sampling coordinates (rows).
+        fill_value: Value assigned to samples outside the image.
+        return_mask: Whether to also return a boolean validity mask.
+
+    Returns:
+        Interpolated float64 values with the broadcast shape of x and y.
+        If return_mask is True, also returns a boolean mask indicating
+        which coordinates lie inside the image.
+
+    Raises:
+        ValueError: If inputs have invalid shapes or contain
+            non-finite values.
+    """
+    image = np.asarray(image, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+
+    # Validate the grayscale image.
+    if image.ndim != 2 or 0 in image.shape:
+        raise ValueError("image must be a non-empty 2D array")
+
+    if not np.all(np.isfinite(image)):
+        raise ValueError("image must contain finite values")
+
+    # Support scalar coordinates and broadcast-compatible arrays.
+    try:
+        x, y = np.broadcast_arrays(x, y)
+    except ValueError as exc:
+        raise ValueError("x and y must have compatible shapes") from exc
+
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("sampling coordinates must be finite")
+
+    height, width = image.shape
+
+    # Integer coordinates refer to pixel centers.
+    valid = (x >= 0) & (x <= width - 1) & (y >= 0) & (y <= height - 1)
+
+    # Clamp coordinates for safe indexing during interpolation.
+    # Invalid samples are replaced with fill_value afterward.
+    safe_x = np.clip(x, 0, width - 1)
+    safe_y = np.clip(y, 0, height - 1)
+
+    x0 = np.floor(safe_x).astype(np.intp)
+    y0 = np.floor(safe_y).astype(np.intp)
+
+    x1 = np.minimum(x0 + 1, width - 1)
+    y1 = np.minimum(y0 + 1, height - 1)
+
+    dx = safe_x - x0
+    dy = safe_y - y0
+
+    # Read the four neighboring pixel intensities.
+    top_left = image[y0, x0]
+    top_right = image[y0, x1]
+    bottom_left = image[y1, x0]
+    bottom_right = image[y1, x1]
+
+    # Bilinear interpolation without rounding.
+    top = (1.0 - dx) * top_left + dx * top_right
+    bottom = (1.0 - dx) * bottom_left + dx * bottom_right
+    values = (1.0 - dy) * top + dy * bottom
+
+    # Replace out-of-bounds samples with the requested fill value.
+    values = np.where(valid, values, fill_value)
+
+    if return_mask:
+        return values, valid
+
+    return values
+
+
+def warp_to_canonical(
+    gray: np.ndarray,
+    h: np.ndarray,
+    out_shape: tuple[int, int],
+    *,
+    fill_value: float = np.nan,
+    return_mask: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Rectify a grayscale photograph into a canonical output grid.
+
+    Uses inverse warping: each output pixel is mapped through the
+    homography to locate its sampling position in the photograph.
+
+    Args:
+        gray: Input grayscale photograph as a 2D array.
+        h: A (3, 3) homography mapping canonical output pixel
+            coordinates to photograph pixel coordinates.
+        out_shape: Output dimensions (height, width).
+        fill_value: Value assigned to samples outside the photograph.
+        return_mask: Whether to return a boolean validity mask.
+
+    Returns:
+        Rectified float64 image of shape out_shape.
+        If return_mask is True, also returns a boolean mask with
+        the same shape indicating valid photograph samples.
+
+    Raises:
+        ValueError: If output dimensions are invalid, or the
+            homography maps an output coordinate to infinity.
+
+    Notes:
+        Output pixel centers lie at integer (x, y) coordinates.
+
+        If h was estimated using card coordinates in millimetres,
+        convert output pixel coordinates to millimetres before
+        applying it. This function expects h to map output pixel
+        coordinates directly into photograph pixels.
+    """
+    if (
+        len(out_shape) != 2
+        or any(not isinstance(size, (int, np.integer)) for size in out_shape)
+        or any(size <= 0 for size in out_shape)
+    ):
+        raise ValueError("out_shape must contain two positive integers")
+
+    height, width = out_shape
+
+    # Build a grid of canonical output pixel centers.
+    x, y = np.meshgrid(np.arange(width, dtype=np.float64), np.arange(height, dtype=np.float64))
+
+    # Map each output position into photograph coordinates.
+    output_points = np.column_stack((x.ravel(), y.ravel()))
+    photo_points = apply_homography(h, output_points)
+
+    photo_x = photo_points[:, 0].reshape(height, width)
+    photo_y = photo_points[:, 1].reshape(height, width)
+
+    # Sample the photograph using our own bilinear interpolation.
+    return sample_bilinear(gray, photo_x, photo_y, fill_value=fill_value, return_mask=return_mask)
