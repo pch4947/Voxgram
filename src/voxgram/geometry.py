@@ -64,3 +64,79 @@ def _normalize_points(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     normalized = shifted * scale
 
     return normalized, transform
+
+
+def estimate_homography(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+    """Estimate the homography mapping source points to destination points.
+
+    Uses normalized Direct Linear Transformation (DLT) with SVD.
+
+    Args:
+        src: Four source (x, y) points with shape (4, 2).
+            For Voxgram, these are canonical card coordinates in mm.
+        dst: Four corresponding destination (x, y) points with shape (4, 2).
+            For Voxgram, these are photograph pixel coordinates.
+
+    Returns:
+        A (3, 3) float64 homography mapping src to dst.
+
+    Raises:
+        ValueError: If the input points are invalid or the linear system
+            is degenerate.
+    """
+    # Validate both sets of point correspondences.
+    src = _points4(src, "src")
+    dst = _points4(dst, "dst")
+
+    # Normalize coordinates to improve numerical stability.
+    src_norm, t_src = _normalize_points(src)
+    dst_norm, t_dst = _normalize_points(dst)
+
+    # Build the 8x9 DLT matrix from four point correspondences.
+    a = np.zeros((8, 9), dtype=np.float64)
+
+    for i, ((x, y), (u, v)) in enumerate(zip(src_norm, dst_norm, strict=True)):
+        a[2 * i] = [
+            -x,
+            -y,
+            -1,
+            0,
+            0,
+            0,
+            u * x,
+            u * y,
+            u,
+        ]
+
+        a[2 * i + 1] = [
+            0,
+            0,
+            0,
+            -x,
+            -y,
+            -1,
+            v * x,
+            v * y,
+            v,
+        ]
+
+    # Solve A @ h = 0 using singular value decomposition.
+    _, singular_values, vt = np.linalg.svd(a, full_matrices=True)
+
+    # Reject rank-deficient or numerically degenerate systems.
+    if singular_values[-1] <= singular_values[0] * 1e-12:
+        raise ValueError("point correspondences form a degenerate system")
+
+    # The last right singular vector contains the homography entries.
+    h_norm = vt[-1].reshape(3, 3)
+
+    # Undo normalization: H = inv(T_dst) @ H_norm @ T_src.
+    h = np.linalg.solve(t_dst, h_norm @ t_src)
+
+    # Homographies are defined up to a nonzero scale.
+    h /= np.linalg.norm(h)
+
+    if abs(h[2, 2]) > 1e-12:
+        h /= h[2, 2]
+
+    return h
