@@ -192,3 +192,83 @@ def apply_homography(h: np.ndarray, points: np.ndarray) -> np.ndarray:
         raise ValueError("homography produced non-finite coordinates")
 
     return result
+
+
+def sample_bilinear(image: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Sample a grayscale image at floating-point pixel coordinates.
+
+    Pixel centers are located at integer coordinates, with (0, 0)
+    representing the top-left pixel center.
+
+    Args:
+        image: A 2D grayscale image.
+        x: Horizontal sampling coordinates (column indices).
+        y: Vertical sampling coordinates (row indices).
+
+    Returns:
+        Interpolated grayscale intensities as float64 values.
+        The output follows the broadcast shape of x and y.
+
+    Raises:
+        ValueError: If the image or coordinates are invalid, or
+            sampling coordinates fall outside the image.
+
+    Notes:
+        This initial version requires coordinates to be in bounds.
+        Configurable fill values and validity masks will be added
+        in the next commit.
+    """
+    image = np.asarray(image, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+
+    # Validate the grayscale image.
+    if image.ndim != 2 or 0 in image.shape:
+        raise ValueError("image must be a non-empty 2D array")
+
+    if not np.all(np.isfinite(image)):
+        raise ValueError("image must contain finite values")
+
+    # Allow scalar coordinates and broadcast-compatible arrays.
+    try:
+        x, y = np.broadcast_arrays(x, y)
+    except ValueError as exc:
+        raise ValueError("x and y must have compatible shapes") from exc
+
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("sampling coordinates must be finite")
+
+    height, width = image.shape
+
+    # Out-of-bounds behavior will be extended in Commit 2.
+    if np.any((x < 0) | (x > width - 1)):
+        raise ValueError("x coordinates outside image bounds")
+
+    if np.any((y < 0) | (y > height - 1)):
+        raise ValueError("y coordinates outside image bounds")
+
+    # Find the surrounding pixel centers.
+    x0 = np.floor(x).astype(np.intp)
+    y0 = np.floor(y).astype(np.intp)
+
+    x1 = np.minimum(x0 + 1, width - 1)
+    y1 = np.minimum(y0 + 1, height - 1)
+
+    # Fractional position between neighboring pixel centers.
+    dx = x - x0
+    dy = y - y0
+
+    # Read the four neighboring grayscale values.
+    top_left = image[y0, x0]
+    top_right = image[y0, x1]
+    bottom_left = image[y1, x0]
+    bottom_right = image[y1, x1]
+
+    # Interpolate horizontally.
+    top = (1.0 - dx) * top_left + dx * top_right
+    bottom = (1.0 - dx) * bottom_left + dx * bottom_right
+
+    # Interpolate vertically.
+    values = (1.0 - dy) * top + dy * bottom
+
+    return values
