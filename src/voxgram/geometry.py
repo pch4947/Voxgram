@@ -281,3 +281,64 @@ def sample_bilinear(
         return values, valid
 
     return values
+
+
+def warp_to_canonical(
+    gray: np.ndarray,
+    h: np.ndarray,
+    out_shape: tuple[int, int],
+    *,
+    fill_value: float = np.nan,
+    return_mask: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Rectify a grayscale photograph into a canonical output grid.
+
+    Uses inverse warping: each output pixel is mapped through the
+    homography to locate its sampling position in the photograph.
+
+    Args:
+        gray: Input grayscale photograph as a 2D array.
+        h: A (3, 3) homography mapping canonical output pixel
+            coordinates to photograph pixel coordinates.
+        out_shape: Output dimensions (height, width).
+        fill_value: Value assigned to samples outside the photograph.
+        return_mask: Whether to return a boolean validity mask.
+
+    Returns:
+        Rectified float64 image of shape out_shape.
+        If return_mask is True, also returns a boolean mask with
+        the same shape indicating valid photograph samples.
+
+    Raises:
+        ValueError: If output dimensions are invalid, or the
+            homography maps an output coordinate to infinity.
+
+    Notes:
+        Output pixel centers lie at integer (x, y) coordinates.
+
+        If h was estimated using card coordinates in millimetres,
+        convert output pixel coordinates to millimetres before
+        applying it. This function expects h to map output pixel
+        coordinates directly into photograph pixels.
+    """
+    if (
+        len(out_shape) != 2
+        or any(not isinstance(size, (int, np.integer)) for size in out_shape)
+        or any(size <= 0 for size in out_shape)
+    ):
+        raise ValueError("out_shape must contain two positive integers")
+
+    height, width = out_shape
+
+    # Build a grid of canonical output pixel centers.
+    x, y = np.meshgrid(np.arange(width, dtype=np.float64), np.arange(height, dtype=np.float64))
+
+    # Map each output position into photograph coordinates.
+    output_points = np.column_stack((x.ravel(), y.ravel()))
+    photo_points = apply_homography(h, output_points)
+
+    photo_x = photo_points[:, 0].reshape(height, width)
+    photo_y = photo_points[:, 1].reshape(height, width)
+
+    # Sample the photograph using our own bilinear interpolation.
+    return sample_bilinear(gray, photo_x, photo_y, fill_value=fill_value, return_mask=return_mask)
