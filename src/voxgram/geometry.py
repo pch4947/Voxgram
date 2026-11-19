@@ -194,29 +194,35 @@ def apply_homography(h: np.ndarray, points: np.ndarray) -> np.ndarray:
     return result
 
 
-def sample_bilinear(image: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+def sample_bilinear(
+    image: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    fill_value: float = np.nan,
+    return_mask: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Sample a grayscale image at floating-point pixel coordinates.
 
-    Pixel centers are located at integer coordinates, with (0, 0)
-    representing the top-left pixel center.
+    Pixel centers lie at integer coordinates, with (0, 0) at the
+    top-left pixel center. Coordinates outside the image receive
+    the specified fill value.
 
     Args:
-        image: A 2D grayscale image.
-        x: Horizontal sampling coordinates (column indices).
-        y: Vertical sampling coordinates (row indices).
+        image: A non-empty 2D grayscale image.
+        x: Horizontal sampling coordinates (columns).
+        y: Vertical sampling coordinates (rows).
+        fill_value: Value assigned to samples outside the image.
+        return_mask: Whether to also return a boolean validity mask.
 
     Returns:
-        Interpolated grayscale intensities as float64 values.
-        The output follows the broadcast shape of x and y.
+        Interpolated float64 values with the broadcast shape of x and y.
+        If return_mask is True, also returns a boolean mask indicating
+        which coordinates lie inside the image.
 
     Raises:
-        ValueError: If the image or coordinates are invalid, or
-            sampling coordinates fall outside the image.
-
-    Notes:
-        This initial version requires coordinates to be in bounds.
-        Configurable fill values and validity masks will be added
-        in the next commit.
+        ValueError: If inputs have invalid shapes or contain
+            non-finite values.
     """
     image = np.asarray(image, dtype=np.float64)
     x = np.asarray(x, dtype=np.float64)
@@ -229,7 +235,7 @@ def sample_bilinear(image: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarr
     if not np.all(np.isfinite(image)):
         raise ValueError("image must contain finite values")
 
-    # Allow scalar coordinates and broadcast-compatible arrays.
+    # Support scalar coordinates and broadcast-compatible arrays.
     try:
         x, y = np.broadcast_arrays(x, y)
     except ValueError as exc:
@@ -240,35 +246,38 @@ def sample_bilinear(image: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarr
 
     height, width = image.shape
 
-    # Out-of-bounds behavior will be extended in Commit 2.
-    if np.any((x < 0) | (x > width - 1)):
-        raise ValueError("x coordinates outside image bounds")
+    # Integer coordinates refer to pixel centers.
+    valid = (x >= 0) & (x <= width - 1) & (y >= 0) & (y <= height - 1)
 
-    if np.any((y < 0) | (y > height - 1)):
-        raise ValueError("y coordinates outside image bounds")
+    # Clamp coordinates for safe indexing during interpolation.
+    # Invalid samples are replaced with fill_value afterward.
+    safe_x = np.clip(x, 0, width - 1)
+    safe_y = np.clip(y, 0, height - 1)
 
-    # Find the surrounding pixel centers.
-    x0 = np.floor(x).astype(np.intp)
-    y0 = np.floor(y).astype(np.intp)
+    x0 = np.floor(safe_x).astype(np.intp)
+    y0 = np.floor(safe_y).astype(np.intp)
 
     x1 = np.minimum(x0 + 1, width - 1)
     y1 = np.minimum(y0 + 1, height - 1)
 
-    # Fractional position between neighboring pixel centers.
-    dx = x - x0
-    dy = y - y0
+    dx = safe_x - x0
+    dy = safe_y - y0
 
-    # Read the four neighboring grayscale values.
+    # Read the four neighboring pixel intensities.
     top_left = image[y0, x0]
     top_right = image[y0, x1]
     bottom_left = image[y1, x0]
     bottom_right = image[y1, x1]
 
-    # Interpolate horizontally.
+    # Bilinear interpolation without rounding.
     top = (1.0 - dx) * top_left + dx * top_right
     bottom = (1.0 - dx) * bottom_left + dx * bottom_right
-
-    # Interpolate vertically.
     values = (1.0 - dy) * top + dy * bottom
+
+    # Replace out-of-bounds samples with the requested fill value.
+    values = np.where(valid, values, fill_value)
+
+    if return_mask:
+        return values, valid
 
     return values
