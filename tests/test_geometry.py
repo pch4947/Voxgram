@@ -1,6 +1,7 @@
 """Tests for planar homography estimation and point transformation."""
 
 import numpy as np
+import pytest
 
 from voxgram.geometry import apply_homography, estimate_homography
 
@@ -116,3 +117,121 @@ def test_empty_points():
 
     assert result.shape == (0, 2)
     assert result.dtype == np.float64
+
+
+@pytest.mark.parametrize(
+    ("invalid_points", "reason"),
+    [
+        (
+            [[0, 0], [1, 0], [1, 0], [0, 1]],
+            "repeated points",
+        ),
+        (
+            [[0, 0], [1, 0], [2, 0], [0, 1]],
+            "collinear points",
+        ),
+        (
+            [[0, 0], [2, 0], [0.5, 0.5], [0, 2]],
+            "concave quadrilateral",
+        ),
+        (
+            [[0, 0], [2, 2], [0, 2], [2, 0]],
+            "self-intersecting quadrilateral",
+        ),
+    ],
+)
+def test_reject_invalid_source_quadrilaterals(invalid_points, reason):
+    """Reject invalid source quadrilaterals."""
+    source = np.array(invalid_points, dtype=np.float64)
+
+    with pytest.raises(ValueError):
+        estimate_homography(source, CARD_POINTS)
+
+
+@pytest.mark.parametrize(
+    "invalid_points",
+    [
+        [[0, 0], [1, 0], [1, 0], [0, 1]],
+        [[0, 0], [1, 0], [2, 0], [0, 1]],
+        [[0, 0], [2, 0], [0.5, 0.5], [0, 2]],
+        [[0, 0], [2, 2], [0, 2], [2, 0]],
+    ],
+)
+def test_reject_invalid_destination_quadrilaterals(invalid_points):
+    """Reject invalid destination quadrilaterals."""
+    destination = np.array(invalid_points, dtype=np.float64)
+
+    with pytest.raises(ValueError):
+        estimate_homography(CARD_POINTS, destination)
+
+
+def test_reject_invalid_estimation_shapes():
+    """Homography estimation requires exactly four 2D points."""
+    with pytest.raises(ValueError):
+        estimate_homography(CARD_POINTS[:3], CARD_POINTS)
+
+    with pytest.raises(ValueError):
+        estimate_homography(CARD_POINTS, np.ones((4, 3)))
+
+
+def test_reject_nonfinite_estimation_points():
+    """Reject NaN and infinity in point correspondences."""
+    invalid_source = CARD_POINTS.copy()
+    invalid_source[0, 0] = np.nan
+
+    with pytest.raises(ValueError):
+        estimate_homography(invalid_source, CARD_POINTS)
+
+    invalid_destination = CARD_POINTS.copy()
+    invalid_destination[0, 1] = np.inf
+
+    with pytest.raises(ValueError):
+        estimate_homography(CARD_POINTS, invalid_destination)
+
+
+def test_reject_invalid_transformation_inputs():
+    """Reject invalid homography matrices and point arrays."""
+    with pytest.raises(ValueError):
+        apply_homography(np.ones((2, 2)), CARD_POINTS)
+
+    with pytest.raises(ValueError):
+        apply_homography(np.eye(3), np.ones((4, 3)))
+
+    invalid_h = np.eye(3)
+    invalid_h[0, 0] = np.nan
+
+    with pytest.raises(ValueError):
+        apply_homography(invalid_h, CARD_POINTS)
+
+
+def test_reject_zero_denominator():
+    """Reject points mapped to infinity by a homography."""
+    h = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, -2.0],
+        ]
+    )
+
+    # For x = 2, the homogeneous denominator is 2 - 2 = 0.
+    points = np.array([[2.0, 3.0]])
+
+    with pytest.raises(ValueError, match="zero denominator"):
+        apply_homography(h, points)
+
+
+def test_reject_near_zero_denominator():
+    """Reject points with numerically unstable denominators."""
+    h = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, -2.0],
+        ]
+    )
+
+    points = np.array([[2.0 + 1e-13, 3.0]])
+
+    with pytest.raises(ValueError, match="zero denominator"):
+        apply_homography(h, points)
