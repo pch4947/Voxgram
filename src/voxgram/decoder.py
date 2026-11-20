@@ -40,10 +40,6 @@ line):
 Failure. A stage reports a failure with ``ValueError``. The decoder turns it into
 a :class:`DecodeError` that names the stage, the command line prints it, and no
 audio file is written.
-
-Marker detection is optional at import time. If ``voxgram.detection`` is not in
-the checkout, ``grayscale`` of a colour photograph and ``detect`` stop with a
-clear message, and ``--skip detect`` still works on an undistorted card.
 """
 
 from __future__ import annotations
@@ -60,6 +56,15 @@ import numpy as np
 
 from voxgram.audio_backend import GRIFFIN_LIM_ITERATIONS, griffin_lim, save_audio
 from voxgram.card import MM_PER_INCH, print_matrix, print_shape
+from voxgram.detection import (
+    DEFAULT_LOCAL_OFFSET,
+    default_window,
+    detect_markers,
+    otsu_threshold,
+    threshold_global,
+    threshold_local_mean,
+    to_grayscale,
+)
 from voxgram.extraction import (
     DEFAULT_CELL_FRACTION,
     DataRegion,
@@ -130,43 +135,15 @@ class DecodeError(Exception):
     """A decoding failure. The message is meant for the person running the command."""
 
 
-def _detection_module(stage: str):
-    """Import ``voxgram.detection``, or stop with a message that names the stage."""
-    try:
-        from voxgram import detection
-    except ImportError as exc:
-        raise DecodeError(
-            f"{stage}: voxgram.detection is not part of this checkout yet (marker detection "
-            "is not merged). Use --skip detect for a card with no distortion."
-        ) from exc
-    return detection
-
-
-def _default_to_gray(photo: np.ndarray) -> np.ndarray:
-    try:
-        from voxgram import detection
-    except ImportError:
-        # Without the detection module only an already-gray photograph can pass.
-        if photo.ndim == 2 and (photo.dtype == np.uint8 or np.issubdtype(photo.dtype, np.floating)):
-            return photo.astype(np.float64)
-        raise DecodeError(
-            "grayscale: converting a colour photograph needs voxgram.detection, which is "
-            "not part of this checkout yet. Convert the photograph to grayscale first."
-        ) from None
-    return detection.to_grayscale(photo)
-
-
 def _default_detect(gray: np.ndarray, method: str) -> np.ndarray:
-    return _detection_module("detect").detect_markers(gray, method=method)
+    return detect_markers(gray, method=method)
 
 
 def _default_binarize(gray: np.ndarray, method: str) -> np.ndarray:
     """The binary image detection works on, for diagnosis only."""
-    detection = _detection_module("binary image")
     if method == "global":
-        return detection.threshold_global(gray, detection.otsu_threshold(gray))
-    window = detection.default_window(gray.shape)
-    return detection.threshold_local_mean(gray, window, detection.DEFAULT_LOCAL_OFFSET)
+        return threshold_global(gray, otsu_threshold(gray))
+    return threshold_local_mean(gray, default_window(gray.shape), DEFAULT_LOCAL_OFFSET)
 
 
 @dataclass(frozen=True)
@@ -180,7 +157,7 @@ class Stages:
     * ``binarize(gray, method) -> binary``: the binary image, only to save it.
     """
 
-    to_gray: Callable[[np.ndarray], np.ndarray] = _default_to_gray
+    to_gray: Callable[[np.ndarray], np.ndarray] = to_grayscale
     detect: Callable[[np.ndarray, str], np.ndarray] = _default_detect
     binarize: Callable[[np.ndarray, str], np.ndarray] = _default_binarize
 
@@ -326,7 +303,7 @@ def _keep_binary(
 ) -> None:
     try:
         intermediates["binary"] = np.asarray(stages.binarize(gray, options.threshold))
-    except (DecodeError, ValueError, AttributeError) as exc:
+    except ValueError as exc:
         log.info("binary image not saved: %s", exc)
 
 

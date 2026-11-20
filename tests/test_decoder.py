@@ -1,7 +1,5 @@
 """Tests for the decoder: photograph to WAV."""
 
-import importlib.util
-
 import numpy as np
 import pytest
 import soundfile as sf
@@ -14,7 +12,6 @@ from voxgram.intensity import gray_to_magnitude, image_to_grid
 
 FAST = {"iterations": 2}  # Griffin-Lim quality is not under test here.
 NO_MARKERS = frozenset({"detect"})
-HAS_DETECTION = importlib.util.find_spec("voxgram.detection") is not None
 
 
 def voiced_signal() -> np.ndarray:
@@ -244,14 +241,6 @@ def test_unmeasurable_cells_below_the_limit_are_read_as_silence(card_cut_by_the_
     assert np.all(result.gray[:, -10:] == 255.0)
 
 
-def test_colour_photograph_without_the_detection_module_fails_clearly():
-    if HAS_DETECTION:
-        pytest.skip("voxgram.detection is present")
-    colour = np.zeros((20, 30, 3), dtype=np.uint8)
-    with pytest.raises(DecodeError, match="detection"):
-        decode_photo(colour, DecodeOptions(skip=NO_MARKERS, **FAST))
-
-
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -366,10 +355,9 @@ def test_binary_image_is_saved_as_black_and_white(tmp_path):
     assert read_image(path).tolist() == [[255, 0], [0, 255]]
 
 
-# --- with the real marker detection (runs once voxgram.detection is merged) ---
+# --- with the real marker detection ---------------------------------------
 
 
-@pytest.mark.skipif(not HAS_DETECTION, reason="voxgram.detection is not merged yet")
 def test_real_detection_decodes_a_tilted_colour_photograph(spectrogram, tilted):
     photo, _ = tilted
     colour = synthetic.as_bgr(photo)  # what imageio.read_image gives for a JPEG
@@ -378,7 +366,6 @@ def test_real_detection_decodes_a_tilted_colour_photograph(spectrogram, tilted):
     assert result.skipped == []
 
 
-@pytest.mark.skipif(not HAS_DETECTION, reason="voxgram.detection is not merged yet")
 @pytest.mark.parametrize("threshold", ["local", "global"])
 def test_real_detection_works_with_both_thresholds(spectrogram, tilted, threshold):
     photo, _ = tilted
@@ -386,7 +373,6 @@ def test_real_detection_works_with_both_thresholds(spectrogram, tilted, threshol
     assert np.mean(np.abs(result.gray - spectrogram)) < 5.0
 
 
-@pytest.mark.skipif(not HAS_DETECTION, reason="voxgram.detection is not merged yet")
 def test_real_detection_binary_image_is_saved_with_the_intermediates(tilted, tmp_path):
     photo, _ = tilted
     kept = {}

@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from voxgram import extraction
 from voxgram.extraction import (
     DataRegion,
     binomial_kernel,
@@ -283,6 +284,32 @@ def test_extract_magnitude_passes_options_through():
 
 
 # --- sampler interface (issue #8) -------------------------------------------
+
+
+def test_default_sampler_is_the_bilinear_sampler_of_geometry(monkeypatch):
+    calls = []
+    real = extraction.sample_bilinear
+
+    def spy(image, x, y, **kwargs):
+        calls.append(image.shape)
+        return real(image, x, y, **kwargs)
+
+    monkeypatch.setattr(extraction, "sample_bilinear", spy)
+    image = replicate(random_spectrogram(10), 2)
+    recovered = extract_gray(image, full_region(2))
+    assert calls == [image.shape]
+    assert np.allclose(recovered, random_spectrogram(10), atol=1e-9)
+
+
+def test_cells_smaller_than_a_pixel_repeat_the_edge_instead_of_becoming_nan():
+    # Half as many pixels as cells: the first and last cell centres fall in the
+    # outer half pixel, outside the range geometry.sample_bilinear accepts.
+    image = np.full((ROWS // 2, COLUMNS // 2), 50.0)
+    image[0, :] = 10.0
+    recovered = extract_gray(image, DataRegion(0.0, 0.0, COLUMNS // 2, ROWS // 2))
+    assert np.all(np.isfinite(recovered))
+    assert np.allclose(recovered[0, :], 10.0)
+    assert np.allclose(recovered[-1, :], 50.0)
 
 
 def test_custom_sampler_receives_index_coordinates_and_is_used():
