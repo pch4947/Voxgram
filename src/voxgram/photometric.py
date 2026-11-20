@@ -422,3 +422,129 @@ def apply_tone_curve(
     )
 
     return corrected
+
+
+def calibrate_samples(
+    gray: np.ndarray,
+    h: np.ndarray,
+    x_mm: np.ndarray,
+    y_mm: np.ndarray,
+    *,
+    min_contrast: float = 1.0,
+    saturation_low: float = 0.0,
+    saturation_high: float = 255.0,
+    return_mask: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+    """Recover encoded grayscale values at canonical card coordinates.
+
+    Measures calibration patches, interpolates spatial black and white
+    references, normalizes brightness, and applies an inverse tone curve.
+
+    Args:
+        gray: Input grayscale photograph, with intensities in [0, 255].
+        h: Homography mapping card millimetres to photograph pixels.
+        x_mm: Horizontal sampling positions in card millimetres.
+        y_mm: Vertical sampling positions in card millimetres.
+        min_contrast: Minimum acceptable local white-minus-black level.
+        saturation_low: Raw intensities at or below this threshold
+            are flagged as potentially clipped.
+        saturation_high: Raw intensities at or above this threshold
+            are flagged as potentially clipped.
+        return_mask: Whether to return a boolean validity mask.
+
+    Returns:
+        Corrected float64 grayscale values in [0, 255].
+        Unreliable or out-of-bounds samples are represented by NaN.
+
+        If return_mask is True, also returns a boolean validity mask.
+
+    Raises:
+        ValueError: For invalid parameters, calibration measurements,
+            or a homography mapping sample points to infinity.
+    """
+    if not np.isfinite(min_contrast) or min_contrast <= 0:
+        raise ValueError("min_contrast must be positive and finite")
+
+    if not (
+        np.isfinite(saturation_low)
+        and np.isfinite(saturation_high)
+        and 0 <= saturation_low < saturation_high <= 255
+    ):
+        raise ValueError("invalid saturation thresholds")
+
+    x_mm = np.asarray(x_mm, dtype=np.float64)
+    y_mm = np.asarray(y_mm, dtype=np.float64)
+
+    try:
+        x_mm, y_mm = np.broadcast_arrays(x_mm, y_mm)
+    except ValueError as exc:
+        raise ValueError("coordinate arrays must be broadcast-compatible") from exc
+
+    if not np.all(np.isfinite(x_mm)) or not np.all(np.isfinite(y_mm)):
+        raise ValueError("card coordinates must be finite")
+
+    # Measure all calibration patches in photograph coordinates.
+    measurements = measure_calibration_patches(gray, h)
+
+    # Fit the inverse camera/printing tone response.
+    measured_knots, encoded_knots = fit_tone_curve(measurements)
+
+    # Generate positions in canonical card millimetres.
+    original_shape = x_mm.shape
+    card_points = np.column_stack((x_mm.ravel(), y_mm.ravel()))
+
+    # Map sampling positions into photograph pixels.
+    photo_points = apply_homography(h, card_points)
+
+    # Read the raw photographed grayscale intensities.
+    sampled, inside = sample_bilinear(
+        gray,
+        photo_points[:, 0],
+        photo_points[:, 1],
+        return_mask=True,
+    )
+
+    # Estimate local reference values at these card positions.
+    black, white = interpolate_reference_fields(
+        measurements,
+        x_mm.ravel(),
+        y_mm.ravel(),
+    )
+
+    # An out-of-bounds sample is NaN by default. Use a finite
+    # placeholder during normalization, then restore its invalid mask.
+    safe_samples = np.where(inside, sampled, 0.0)
+
+    normalized, contrast_valid = normalize_brightness(
+        safe_samples.reshape(-1, 1),
+        black.reshape(-1, 1),
+        white.reshape(-1, 1),
+        min_contrast=min_contrast,
+        return_mask=True,
+    )
+
+    normalized = normalized.ravel()
+    contrast_valid = contrast_valid.ravel()
+
+    # Detect raw intensity clipping at the configured thresholds.
+    not_saturated = (sampled > saturation_low) & (sampled < saturation_high)
+
+    valid = inside & contrast_valid & not_saturated
+
+    # Apply the inverse tone response to normalized intensities.
+    corrected = apply_tone_curve(
+        normalized,
+        measured_knots,
+        encoded_knots,
+    )
+
+    # Preserve invalid positions rather than inventing grayscale data.
+    corrected[~valid] = np.nan
+
+    corrected = corrected.reshape(original_shape)
+    valid = valid.reshape(original_shape)
+
+    if return_mask:
+        return corrected, valid
+
+    return corrected
