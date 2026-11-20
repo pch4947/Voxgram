@@ -20,9 +20,10 @@ Coordinate conventions
   *index* coordinates: pixel centres are at integers, as in ``cv2.remap``.
   This module subtracts the half pixel before calling it.
 
-The sampler defaults to a small bilinear sampler kept in this module. The one
-from issue #8 (``voxgram.geometry``) can be passed with ``sampler=``, and then
-the local one can be deleted.
+The sampler defaults to ``voxgram.geometry.sample_bilinear`` (issue #8). The
+coordinates are clamped to the image first, so a cell whose centre falls in the
+outer half pixel repeats the edge value instead of becoming NaN. Another sampler
+can be passed with ``sampler=``.
 
 Library boundary: the sampling and the smoothing are written with NumPy only.
 """
@@ -36,6 +37,7 @@ from math import comb
 import numpy as np
 
 from voxgram.format import GRAY_BLACK, GRAY_WHITE, GRID_SHAPE, NUM_FRAMES, NUM_FREQ_BINS
+from voxgram.geometry import sample_bilinear
 from voxgram.intensity import gray_to_magnitude, image_to_grid
 
 Sampler = Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]
@@ -84,25 +86,10 @@ def cell_centres(region: DataRegion) -> tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
-def bilinear_sample(image: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Bilinear interpolation at fractional index coordinates.
-
-    Positions outside the image are clamped to its border.
-
-    Temporary: replace by the sampler of issue #8 once it is merged.
-    """
+def _sample_clamped(image: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Bilinear sampling from ``geometry``, with coordinates clamped to the image."""
     height, width = image.shape
-    x = np.clip(x, 0.0, width - 1.0)
-    y = np.clip(y, 0.0, height - 1.0)
-    x0 = np.floor(x).astype(np.intp)
-    y0 = np.floor(y).astype(np.intp)
-    x1 = np.minimum(x0 + 1, width - 1)
-    y1 = np.minimum(y0 + 1, height - 1)
-    fx = x - x0
-    fy = y - y0
-    upper = image[y0, x0] * (1.0 - fx) + image[y0, x1] * fx
-    lower = image[y1, x0] * (1.0 - fx) + image[y1, x1] * fx
-    return upper * (1.0 - fy) + lower * fy
+    return sample_bilinear(image, np.clip(x, 0.0, width - 1.0), np.clip(y, 0.0, height - 1.0))
 
 
 def box_kernel(size: int) -> np.ndarray:
@@ -180,7 +167,7 @@ def extract_gray(
             to the grid after sampling. ``None`` (the default) means no
             smoothing.
         sampler: bilinear sampler, ``sampler(image, x, y)`` in index
-            coordinates. Defaults to :func:`bilinear_sample`.
+            coordinates. Defaults to ``geometry.sample_bilinear``.
 
     Returns:
         (257, 376) float64 grid in [0, 255], not rounded. Row 0 is the top of
@@ -192,7 +179,7 @@ def extract_gray(
     image = _as_float_image(corrected)
     _require_region_inside(region, image.shape)
     _require_sampling(samples_per_axis, cell_fraction)
-    sample = bilinear_sample if sampler is None else sampler
+    sample = _sample_clamped if sampler is None else sampler
 
     centre_x, centre_y = cell_centres(region)
     cell_width = region.width / NUM_FRAMES
