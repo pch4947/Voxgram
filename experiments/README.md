@@ -237,6 +237,12 @@ stored privately (section 5), because it contains the voice.
 Decoder outputs go in `outputs/<capture_id>/<commit>/`, with the 7-character
 commit hash of the code that produced them. `outputs/` is ignored by Git.
 
+```
+python -m voxgram.decoder data/photos/<date>/<capture_id>.jpg \
+    -o outputs/<capture_id>/<commit>/voice.wav \
+    --save-intermediates outputs/<capture_id>/<commit>/steps
+```
+
 ## 5. Where raw data is stored
 
 This resolves open decision 6 in
@@ -336,7 +342,7 @@ One row per photograph and per processing run. The columns are:
 | `ev_comp` | Exposure compensation, `0` by default |
 | `setup_ok` | `yes` if the conditions matched this protocol, `no` if not. A `no` row is kept but left out of success rates |
 | `commit` | 7-character hash of the code that produced the result. Empty until processed |
-| `stages` | `all`, or the names of the decoder stages that were switched off, separated by `+`, for example `no-photometric`. Use the names the decoder's switches have (issue #11) |
+| `stages` | `all`, or the stages switched off with the decoder's `--skip`, separated by `+`: `calibrate`, `rectify+calibrate` or `detect+rectify+calibrate`. Skipping `rectify` also skips `calibrate`, and skipping `detect` skips all three. Other options that were changed (`--threshold global`, `--smooth 3`, `--card-dpi`) go in `notes` |
 | `detect_ok` | `yes`, `no` or `ambiguous`: did marker detection succeed |
 | `mae_gray` | Mean absolute error between the recovered gray values `p` and the encoded values `q` over the 257 x 376 grid, in gray levels. Empty if unknown |
 | `mae_db` | The same error in dB (1 gray level is about 0.235 dB) |
@@ -366,7 +372,7 @@ Rules for the file:
 Example row (made up, to show the format):
 
 ```
-20261117_c01_p1_t30p_l0_02,2026-11-17,20261117_session-01,c01,0.2-pilot,p1,30,pitch,0,l0,,,28,0,yes,a1b2c3d,all,yes,6.4,1.5,3,"card slightly curled at the top right"
+20261117_c01_p1_t30p_l0_02,2026-11-17,20261117_session-01,c01,0.3-pilot,p1,30,pitch,0,l0,,,28,0,yes,a1b2c3d,all,yes,6.4,1.5,3,"card slightly curled at the top right"
 ```
 
 ## 7. Working with Git
