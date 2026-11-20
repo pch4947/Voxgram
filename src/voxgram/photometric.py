@@ -249,3 +249,176 @@ def normalize_brightness(
         return normalized, valid
 
     return normalized
+
+
+def _isotonic_nondecreasing(values: np.ndarray) -> np.ndarray:
+    """Fit nondecreasing values using the pool adjacent violators algorithm."""
+    values = np.asarray(values, dtype=np.float64)
+
+    # Each block stores its starting index, ending index, average value, and number of observations.
+    blocks = []
+
+    for i, value in enumerate(values):
+        blocks.append([i, i + 1, float(value), 1])
+
+        # Merge neighboring blocks whenever monotonicity is violated.
+        while len(blocks) >= 2 and blocks[-2][2] > blocks[-1][2]:
+            right = blocks.pop()
+            left = blocks.pop()
+
+            count = left[3] + right[3]
+            mean = (left[2] * left[3] + right[2] * right[3]) / count
+
+            blocks.append([left[0], right[1], mean, count])
+
+    fitted = np.empty_like(values)
+
+    for start, end, mean, _count in blocks:
+        fitted[start:end] = mean
+
+    return fitted
+
+
+def fit_tone_curve(measurements: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Fit an inverse grayscale tone curve from calibration patches.
+
+    Patch measurements are first normalized using spatial black and
+    white references. Repeated grayscale levels are combined using
+    their median, then constrained to a nondecreasing response.
+
+    Args:
+        measurements: Measured grayscale intensities for all patches,
+            ordered as in CALIBRATION_PATCHES.
+
+    Returns:
+        measured_knots: Strictly increasing normalized photographed
+            grayscale levels.
+        encoded_knots: Corresponding encoded grayscale levels in
+            [0, 255], monotonically nondecreasing.
+
+        Together these define measured -> encoded interpolation.
+
+    Raises:
+        ValueError: If measurements are invalid, local contrast is
+            insufficient, or the fitted response is not invertible.
+    """
+    measurements = np.asarray(measurements, dtype=np.float64)
+
+    centers = patch_centers_mm()
+    levels = patch_levels()
+
+    if measurements.shape != (len(levels),):
+        raise ValueError("measurements must contain one value per patch")
+
+    if not np.all(np.isfinite(measurements)):
+        raise ValueError("measurements must contain finite values")
+
+    # Estimate the local black and white values at every patch center.
+    black, white = interpolate_reference_fields(
+        measurements,
+        centers[:, 0],
+        centers[:, 1],
+    )
+
+    # Normalize each photographed patch measurement to a common scale.
+    normalized = normalize_brightness(
+        measurements.reshape(-1, 1),
+        black.reshape(-1, 1),
+        white.reshape(-1, 1),
+    ).ravel()
+
+    if not np.all(np.isfinite(normalized)):
+        raise ValueError("insufficient contrast at calibration patches")
+
+    # Combine repeated patches using a robust median.
+    encoded_levels = np.unique(levels).astype(np.float64)
+    measured_levels = np.array(
+        [np.median(normalized[levels == level]) for level in encoded_levels],
+        dtype=np.float64,
+    )
+
+    # Keep fitting values within the normalized grayscale domain.
+    measured_levels = np.clip(measured_levels, 0.0, 255.0)
+
+    # Suppress minor measurement inversions due to noise.
+    fitted_levels = _isotonic_nondecreasing(measured_levels)
+
+    # A flat response cannot uniquely distinguish the encoded
+    # levels in that interval. Combine equal measured knots.
+    measured_knots, inverse_indices = np.unique(
+        fitted_levels,
+        return_inverse=True,
+    )
+
+    if len(measured_knots) < 2:
+        raise ValueError("tone response cannot be inverted")
+
+    # Assign each merged knot the mean of its encoded levels.
+    encoded_knots = np.bincount(
+        inverse_indices,
+        weights=encoded_levels,
+    ) / np.bincount(inverse_indices)
+
+    return measured_knots, encoded_knots
+
+
+def apply_tone_curve(
+    values: np.ndarray,
+    measured_knots: np.ndarray,
+    encoded_knots: np.ndarray,
+) -> np.ndarray:
+    """Map brightness-normalized grayscale values to encoded values.
+
+    Uses piecewise-linear interpolation. Values outside the fitted
+    range are clamped to the nearest endpoint. NaN inputs remain NaN.
+
+    Args:
+        values: Grayscale values after local brightness normalization.
+        measured_knots: Strictly increasing measured grayscale levels.
+        encoded_knots: Corresponding nondecreasing encoded levels.
+
+    Returns:
+        Corrected float64 values with the same shape as the input.
+
+    Raises:
+        ValueError: If the tone curve is invalid or values contain
+            positive or negative infinity.
+    """
+    values = np.asarray(values, dtype=np.float64)
+    measured_knots = np.asarray(measured_knots, dtype=np.float64)
+    encoded_knots = np.asarray(encoded_knots, dtype=np.float64)
+
+    if (
+        measured_knots.ndim != 1
+        or encoded_knots.ndim != 1
+        or len(measured_knots) != len(encoded_knots)
+        or len(measured_knots) < 2
+    ):
+        raise ValueError("tone curve requires matching 1D knot arrays")
+
+    if not (np.all(np.isfinite(measured_knots)) and np.all(np.isfinite(encoded_knots))):
+        raise ValueError("tone curve knots must be finite")
+
+    if np.any(np.diff(measured_knots) <= 0):
+        raise ValueError("measured knots must be strictly increasing")
+
+    if np.any(np.diff(encoded_knots) < 0):
+        raise ValueError("encoded knots must be nondecreasing")
+
+    if np.any((encoded_knots < 0) | (encoded_knots > 255)):
+        raise ValueError("encoded knots must be within [0, 255]")
+
+    if np.any(np.isinf(values)):
+        raise ValueError("input values must not contain infinity")
+
+    # Preserve invalid pixels from brightness normalization.
+    corrected = np.full(values.shape, np.nan, dtype=np.float64)
+    valid = np.isfinite(values)
+
+    corrected[valid] = np.interp(
+        values[valid],
+        measured_knots,
+        encoded_knots,
+    )
+
+    return corrected
