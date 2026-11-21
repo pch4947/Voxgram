@@ -243,6 +243,24 @@ python -m voxgram.decoder data/photos/<date>/<capture_id>.jpg \
     --save-intermediates outputs/<capture_id>/<commit>/steps
 ```
 
+### Evaluation
+
+To decode every listed photograph with the full pipeline and with each stage
+switched off, and record the results in `captures.csv`:
+
+```
+python -m voxgram.evaluation captures --append-captures
+```
+
+The encoded values of each card are read from `data/cards/<card>_source.png`
+(the spectrogram image or the card print image), or from
+`data/cards/<card>_source.wav` if there is no image. A row whose `commit` is
+still empty receives the result of the full pipeline; every other run is added
+as a copy of the row, as the rules below ask. Commit the code first: results
+from uncommitted code are not recorded. The summary tables go to
+`outputs/eval/<commit>/summary.md`; add `--report experiments/results/<name>.md`
+to keep a copy here.
+
 ## 5. Where raw data is stored
 
 This resolves open decision 6 in
