@@ -115,14 +115,14 @@ captures the image. The format parameters are in
 
 ## 5. Module ownership
 
-| Area | Owner | Planned module (**Proposed** names) |
+| Area | Owner | Module |
 | --- | --- | --- |
 | Audio format, encoder, digital baseline | 박창훈 | `format.py`, `intensity.py`, `audio_backend.py`, `imageio.py`, `encoder.py`, `baseline.py`, `card.py`, `synthetic.py` (implemented) |
 | Evaluation scripts | 박창훈 | `evaluation.py` (implemented) |
-| Thresholding, connected components, marker detection | 강예원 | `detection.py` |
-| Homography and resampling | Torval Ripel | `geometry.py` |
-| Brightness calibration | Torval Ripel | `photometric.py` |
-| ROI extraction, decoder integration | Cyprien Delrue | `extraction.py`, `decoder.py` |
+| Thresholding, connected components, marker detection | 강예원 | `detection.py` (implemented) |
+| Homography and resampling | Torval Ripel | `geometry.py` (implemented) |
+| Brightness calibration | Torval Ripel | `photometric.py` (implemented) |
+| ROI extraction, decoder integration | Cyprien Delrue | `extraction.py`, `decoder.py` (implemented) |
 | Experiment records | Cyprien Delrue | `experiments/` |
 
 Every member also reviews another member's module over the course of the
@@ -240,7 +240,7 @@ outside image read/write.
 | --- | --- | --- |
 | 1 | Confirm the proposed dates for M1 to M5; date of the final report and presentation (M6) | Now |
 | 2 | Who reviews whose module (not a merge requirement) | Before M3 |
-| 3 | Marker shape and size, orientation cue, patch count and gray levels, exact canonical coordinates | M2 |
+| 3 | Marker shape and size, orientation cue, patch count and gray levels, exact canonical coordinates. : Decided in issue #3: the `0.3-pilot` layout in [CARD_FORMAT.md](CARD_FORMAT.md#7-canonical-coordinates) section 7. | M2 |
 | 4 | Final values of duration, grid density, dynamic range and print size | After the M1 and M3 gates |
 | 5 | Evaluation metrics and the intelligibility procedure | Before M5 |
 | 6 | Where raw photographs and voice recordings are stored. They are kept out of this public repository by default. : Decided in [experiments/README.md](../experiments/README.md#5-where-raw-data-is-stored): private shared Google Drive folder, local copy in data/. Raw photographs and voice recordings stay out of this public repository.| Before the first capture session |

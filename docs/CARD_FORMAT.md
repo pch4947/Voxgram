@@ -108,10 +108,12 @@ capture.
 
 ## 7. Canonical coordinates
 
-**Status: draft, proposed in issue #3.** The values below are implemented in
-`format.py`, `card.py` draws them, and they stay open to change until the team
-agrees. Changing a value means changing a constant; the renderer and the
-synthetic test cards follow.
+**Status: agreed in issue #3 (closed 19 November 2026).** The values below are
+implemented in `format.py`, and `card.py` draws them. Changing a value means
+changing a constant; the renderer and the synthetic test cards follow. Any
+change follows the format change rule in [GIT_CONVENTION.md](GIT_CONVENTION.md#format-changes):
+bump `FORMAT_VERSION`, update this section, and tell the affected owners before
+merging.
 
 ![Card layout](images/card_layout.png)
 
