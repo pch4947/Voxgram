@@ -80,6 +80,21 @@ first 3.0 s of a longer one. The baseline writes the spectrogram image and
 three WAV files to compare by ear: the original, Griffin-Lim from the exact
 magnitude, and Griffin-Lim from the 8-bit image.
 
+Decode a photograph of a printed card, and measure what each correction stage
+contributes:
+
+```powershell
+python -m voxgram.decoder photo.jpg -o voice.wav
+python -m voxgram.evaluation synthetic
+python -m voxgram.evaluation captures --append-captures
+```
+
+`evaluation synthetic` renders photographs with known geometry and lighting;
+`evaluation captures` reads the real photographs listed in
+`experiments/captures.csv` from `data/`. Both decode every photograph with the
+full pipeline and with each stage switched off, and write `results.csv`,
+`summary.md` and the WAV files to `outputs/eval/<commit>/`.
+
 Run the checks that CI runs:
 
 ```powershell
@@ -124,12 +139,18 @@ src/voxgram/        Python package
   card.py             Card layout and print-ready rendering
   synthetic.py        Synthetic photographs with known ground truth, for tests
   baseline.py         Digital round trip without printing
+  detection.py        Thresholding, connected components, marker detection
+  geometry.py         Homography, bilinear sampling, inverse warp
+  photometric.py      Brightness and tone calibration from the patches
+  extraction.py       Data region sampling onto the 257 x 376 grid
+  decoder.py          Photograph -> WAV, with stage switches for the ablation
+  evaluation.py       Metrics and the stage-by-stage comparison
 tests/              Unit tests
 tools/              Repository tooling (library boundary check)
+experiments/        Capture protocol, capture table, session records
 ```
 
-The remaining pipeline modules will be added under `src/voxgram/` by their
-owners as the milestones progress. The planned module split is in
+The module split and owners are in
 [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md#5-module-ownership).
 
 ## Team
