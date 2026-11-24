@@ -14,10 +14,11 @@ spectrogram values in spite of that. The image-processing pipeline is
 implemented by hand; existing libraries are used only for I/O, linear algebra
 and the audio backend.
 
-> **Status:** the encoder, the digital baseline (recording to grayscale image
-> and back, without printing) and the printable card are implemented. The
-> card layout is a draft under discussion in issue #3. Marker detection,
-> geometric and brightness correction are not implemented.
+> **Status:** the full pipeline is implemented: encoder, printable card,
+> marker detection, geometric and brightness correction, extraction, the
+> decoder from photograph to WAV, and the evaluation scripts. The card layout
+> was agreed in issue #3 (format `0.3-pilot`). It has been tested on synthetic
+> photographs; the first printed card (issue #15) is still to be photographed.
 > Code freeze is Thursday 26 November 2026; source code submission is
 > Saturday 28 November 2026.
 > See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) for milestones.
