@@ -216,7 +216,7 @@ def test_insufficient_contrast_is_invalid():
     np.testing.assert_allclose(corrected[0, 1], 127.5)
 
 
-def test_saturated_sample_is_flagged():
+def test_saturated_sample_is_flagged_when_requested():
     """A completely clipped measurement is marked as unreliable."""
     image, h = make_synthetic_card()
 
@@ -228,6 +228,7 @@ def test_saturated_sample_is_flagged():
         h,
         np.array([75.0]),
         np.array([50.0]),
+        reject_saturated=True,
         return_mask=True,
     )
 
@@ -243,3 +244,36 @@ def test_incomplete_calibration_is_rejected():
 
     with pytest.raises(ValueError):
         measure_calibration_patches(image, h)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        (0.0, 0.0),
+        (255.0, 255.0),
+    ],
+)
+def test_grayscale_endpoints_remain_valid_by_default(raw_value, expected):
+    """Valid black and white pixels must not become NaN."""
+    image, h = make_synthetic_card()
+
+    # Replace the center sampling region with a grayscale endpoint.
+    image[196:204, 296:304] = raw_value
+
+    corrected, valid = calibrate_samples(
+        image,
+        h,
+        np.array([75.0]),
+        np.array([50.0]),
+        return_mask=True,
+    )
+
+    assert valid[0]
+    assert np.isfinite(corrected[0])
+
+    np.testing.assert_allclose(
+        corrected[0],
+        expected,
+        rtol=0,
+        atol=1e-10,
+    )
