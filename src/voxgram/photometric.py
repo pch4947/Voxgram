@@ -433,6 +433,7 @@ def calibrate_samples(
     min_contrast: float = 1.0,
     saturation_low: float = 0.0,
     saturation_high: float = 255.0,
+    reject_saturated: bool = False,
     return_mask: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """Recover encoded grayscale values at canonical card coordinates.
@@ -450,6 +451,9 @@ def calibrate_samples(
             are flagged as potentially clipped.
         saturation_high: Raw intensities at or above this threshold
             are flagged as potentially clipped.
+        reject_saturated: Whether to reject raw intensities at or beyond
+            the saturation thresholds. Disabled by default because
+            pure black and white can be legitimate encoded values.
         return_mask: Whether to return a boolean validity mask.
 
     Returns:
@@ -526,10 +530,13 @@ def calibrate_samples(
     normalized = normalized.ravel()
     contrast_valid = contrast_valid.ravel()
 
-    # Detect raw intensity clipping at the configured thresholds.
-    not_saturated = (sampled > saturation_low) & (sampled < saturation_high)
+    # Accept valid grayscale endpoints by default.
+    # Pure black and white may represent legitimate spectrogram data.
+    valid = inside & contrast_valid
 
-    valid = inside & contrast_valid & not_saturated
+    # Optionally reject potentially clipped photograph intensities.
+    if reject_saturated:
+        valid &= (sampled > saturation_low) & (sampled < saturation_high)
 
     # Apply the inverse tone response to normalized intensities.
     corrected = apply_tone_curve(
