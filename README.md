@@ -87,8 +87,10 @@ with each correction stage switched off, and writes the comparison to
 `outputs\demo\summary.md` and the reconstructed speech to `outputs\demo\audio\`.
 It takes under a minute. The tests run from **Test Explorer** (pytest).
 
-Python has no separate build step. Visual Studio runs the `.py` files
-directly, and Python writes the compiled bytecode to `__pycache__/` folders.
+Python needs no build step to run. **Build** in Visual Studio compiles the
+sources to Python bytecode in `__pycache__/` folders with the `.venv`
+interpreter (`python -m compileall`), and Python also writes bytecode there
+when it runs.
 
 ### Commands
 

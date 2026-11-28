@@ -99,4 +99,17 @@
     </Interpreter>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Python needs no .NET reference assemblies. Without this override, Build
+       fails with MSB3644 on machines without the .NET Framework 4.7.2
+       targeting pack, which the Python workload does not install. -->
+  <Target Name="GetReferenceAssemblyPaths" />
+  <!-- Build compiles the Python sources to bytecode in __pycache__ folders,
+       with the project environment. -->
+  <PropertyGroup>
+    <ProjectPython>$(MSBuildProjectDirectory)\.venv\Scripts\python.exe</ProjectPython>
+  </PropertyGroup>
+  <Target Name="CoreCompile">
+    <Exec Condition="Exists('$(ProjectPython)')" WorkingDirectory="$(MSBuildProjectDirectory)" Command="&quot;$(ProjectPython)&quot; -m compileall -q src tests tools" />
+    <Warning Condition="!Exists('$(ProjectPython)')" Text="No .venv environment yet, so no bytecode was compiled. Create the .venv environment from requirements.txt (see README.md)." />
+  </Target>
 </Project>
