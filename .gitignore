@@ -20,6 +20,8 @@ env/
 
 # IDE
 .vs/
+obj/
+bin/
 .vscode/
 .idea/
 *.pyproj.user

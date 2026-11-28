@@ -1,0 +1,115 @@
+﻿<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{46B68DC0-CA92-42C5-83C7-8F6D58FB2B7F}</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>src\voxgram\evaluation.py</StartupFile>
+    <SearchPath>src</SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>Voxgram</Name>
+    <RootNamespace>Voxgram</RootNamespace>
+    <CommandLineArguments>synthetic --audio samples\libri1_3s.wav --conditions front tilt-moderate -o outputs\demo</CommandLineArguments>
+    <IsWindowsApplication>False</IsWindowsApplication>
+    <TestFramework>pytest</TestFramework>
+    <SuppressConfigureTestFrameworkPrompt>true</SuppressConfigureTestFrameworkPrompt>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src\voxgram\__init__.py" />
+    <Compile Include="src\voxgram\audio_backend.py" />
+    <Compile Include="src\voxgram\baseline.py" />
+    <Compile Include="src\voxgram\card.py" />
+    <Compile Include="src\voxgram\decoder.py" />
+    <Compile Include="src\voxgram\detection.py" />
+    <Compile Include="src\voxgram\encoder.py" />
+    <Compile Include="src\voxgram\evaluation.py" />
+    <Compile Include="src\voxgram\extraction.py" />
+    <Compile Include="src\voxgram\format.py" />
+    <Compile Include="src\voxgram\geometry.py" />
+    <Compile Include="src\voxgram\imageio.py" />
+    <Compile Include="src\voxgram\intensity.py" />
+    <Compile Include="src\voxgram\photometric.py" />
+    <Compile Include="src\voxgram\synthetic.py" />
+    <Compile Include="tests\test_audio_backend.py" />
+    <Compile Include="tests\test_card.py" />
+    <Compile Include="tests\test_decoder.py" />
+    <Compile Include="tests\test_detection.py" />
+    <Compile Include="tests\test_encoder.py" />
+    <Compile Include="tests\test_evaluation.py" />
+    <Compile Include="tests\test_extraction.py" />
+    <Compile Include="tests\test_format.py" />
+    <Compile Include="tests\test_geometry.py" />
+    <Compile Include="tests\test_intensity.py" />
+    <Compile Include="tests\test_library_boundary.py" />
+    <Compile Include="tests\test_photometric.py" />
+    <Compile Include="tests\test_warp.py" />
+    <Compile Include="tools\check_library_boundary.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include=".editorconfig" />
+    <Content Include=".gitattributes" />
+    <Content Include=".gitignore" />
+    <Content Include="CONTRIBUTING.md" />
+    <Content Include="README.md" />
+    <Content Include="docs\CARD_FORMAT.md" />
+    <Content Include="docs\GIT_CONVENTION.md" />
+    <Content Include="docs\PROJECT_PLAN.md" />
+    <Content Include="docs\images\card_layout.png" />
+    <Content Include="experiments\README.md" />
+    <Content Include="experiments\TEMPLATE.md" />
+    <Content Include="experiments\captures.csv" />
+    <Content Include="experiments\records\20261126_session-01.md" />
+    <Content Include="experiments\records\20261128_session-02.md" />
+    <Content Include="experiments\results\real-captures.md" />
+    <Content Include="experiments\results\synthetic.md" />
+    <Content Include="pyproject.toml" />
+    <Content Include="requirements.txt" />
+    <Content Include="samples\libri1_3s.wav" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="docs\" />
+    <Folder Include="docs\images\" />
+    <Folder Include="experiments\" />
+    <Folder Include="experiments\records\" />
+    <Folder Include="experiments\results\" />
+    <Folder Include="samples\" />
+    <Folder Include="src\" />
+    <Folder Include="src\voxgram\" />
+    <Folder Include="tests\" />
+    <Folder Include="tools\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Interpreter Include=".venv\">
+      <Id>.venv</Id>
+      <Version>3.12</Version>
+      <Description>.venv (Python 3.12 (64-bit))</Description>
+      <InterpreterPath>Scripts\python.exe</InterpreterPath>
+      <WindowsInterpreterPath>Scripts\pythonw.exe</WindowsInterpreterPath>
+      <PathEnvironmentVariable>PYTHONPATH</PathEnvironmentVariable>
+      <Architecture>X64</Architecture>
+    </Interpreter>
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Python needs no .NET reference assemblies. Without this override, Build
+       fails with MSB3644 on machines without the .NET Framework 4.7.2
+       targeting pack, which the Python workload does not install. -->
+  <Target Name="GetReferenceAssemblyPaths" />
+  <!-- Build compiles the Python sources to bytecode in __pycache__ folders,
+       with the project environment. -->
+  <PropertyGroup>
+    <ProjectPython>$(MSBuildProjectDirectory)\.venv\Scripts\python.exe</ProjectPython>
+  </PropertyGroup>
+  <Target Name="CoreCompile">
+    <Exec Condition="Exists('$(ProjectPython)')" WorkingDirectory="$(MSBuildProjectDirectory)" Command="&quot;$(ProjectPython)&quot; -m compileall -q src tests tools" />
+    <Warning Condition="!Exists('$(ProjectPython)')" Text="No .venv environment yet, so no bytecode was compiled. Create the .venv environment from requirements.txt (see README.md)." />
+  </Target>
+</Project>

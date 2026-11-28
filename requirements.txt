@@ -1,0 +1,5 @@
+numpy
+opencv-python
+librosa==0.11.0
+soundfile
+pytest

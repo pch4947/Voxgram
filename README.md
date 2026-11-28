@@ -18,9 +18,10 @@ and the audio backend.
 > marker detection, geometric and brightness correction, extraction, the
 > decoder from photograph to WAV, and the evaluation scripts. The card layout
 > was agreed in issue #3 (format `0.3-pilot`). It has been tested on synthetic
-> photographs; the first printed card (issue #15) is still to be photographed.
-> Code freeze is Thursday 26 November 2026; source code submission is
-> Saturday 28 November 2026.
+> photographs and on smartphone photographs of printed cards from two
+> speakers, including a card printed at the specified size (issue #15,
+> [experiments/results/real-captures.md](experiments/results/real-captures.md)).
+> Source code submission: Saturday 28 November 2026.
 > See [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) for milestones.
 
 ## Pipeline
@@ -47,9 +48,10 @@ keeps its intensity values through rectification and extraction.
 | Dynamic range | Peak-normalized, -60 to 0 dB, darker means larger magnitude |
 | Card | 150 x 100 mm, with a 110 x 75 mm spectrogram region |
 
-These values are provisional until the first pilot validates them. The full
-specification is in [docs/CARD_FORMAT.md](docs/CARD_FORMAT.md), and the shared
-constants live in [src/voxgram/format.py](src/voxgram/format.py).
+A card printed at this size decodes to intelligible speech from a smartphone
+photograph (issue #15). The full specification is in
+[docs/CARD_FORMAT.md](docs/CARD_FORMAT.md), and the shared constants live in
+[src/voxgram/format.py](src/voxgram/format.py).
 
 ## Getting started
 
@@ -63,6 +65,34 @@ python -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
+
+### Open in Visual Studio
+
+The repository is also a Visual Studio solution. It needs Visual Studio 2022
+or newer with the **Python development** workload.
+
+1. Open `Voxgram.sln`.
+2. In Solution Explorer, right-click **Python Environments**, choose
+   **Add Environment**, then **Virtual environment**. Name it `.venv` and
+   install the packages from `requirements.txt`. If Visual Studio offers to
+   create the missing `.venv` environment, accept instead.
+3. Press **F5**.
+
+The start-up file is `src\voxgram\evaluation.py`, with the arguments
+`synthetic --audio samples\libri1_3s.wav --conditions front tilt-moderate -o outputs\demo`
+(Project, Properties, Debug). This demo needs no camera and no recording of
+your own. It encodes the sample speech into a card, renders front-facing and
+tilted photographs of the card, decodes each one with the full pipeline and
+with each correction stage switched off, and writes the comparison to
+`outputs\demo\summary.md` and the reconstructed speech to `outputs\demo\audio\`.
+It takes under a minute. The tests run from **Test Explorer** (pytest).
+
+Python needs no build step to run. **Build** in Visual Studio compiles the
+sources to Python bytecode in `__pycache__/` folders with the `.venv`
+interpreter (`python -m compileall`), and Python also writes bytecode there
+when it runs.
+
+### Commands
 
 Encode a recording, make a printable card, or run the full digital round
 trip:
@@ -129,8 +159,12 @@ any other ready-made vision routine.
 ## Repository layout
 
 ```
+Voxgram.sln         Visual Studio solution
+Voxgram.pyproj      Visual Studio Python project
+requirements.txt    Dependencies, for creating the environment in Visual Studio
 .github/            Issue and PR templates, CI workflow
 docs/               Project plan, card format, git convention
+samples/            Public speech sample for the demo (reference 6)
 src/voxgram/        Python package
   format.py           Shared format constants
   intensity.py        Magnitude <-> grayscale mapping, both directions
@@ -150,6 +184,10 @@ tests/              Unit tests
 tools/              Repository tooling (library boundary check)
 experiments/        Capture protocol, capture table, session records
 ```
+
+The team's voice recordings, printed-card images and photographs are not in
+the repository, because they contain team members' voices. Their measured
+results are in `experiments/`.
 
 The module split and owners are in
 [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md#5-module-ownership).
@@ -180,3 +218,4 @@ in the experiments and the final presentation.
 3. N. Aoki, "Speech Restoration of Spectrogram Images Printed in a Document 'Visible Speech' Published in 1947," *IEICE Technical Report*, vol. 123, no. 95, EA2023-6, pp. 12-15, July 2023.
 4. N. Aoki, "A survey of an inverse halftoning technique toward speech restoration of printed spectrogram images," *Acoustical Science and Technology*, vol. 44, no. 4, pp. 336-339, 2023. DOI: 10.1250/ast.44.336
 5. Librosa, "librosa.griffinlim," version 0.11.0 documentation. https://librosa.org/doc/0.11.0/generated/librosa.griffinlim.html
+6. V. Panayotov, G. Chen, D. Povey and S. Khudanpur, "LibriSpeech: an ASR corpus based on public domain audio books," *Proc. ICASSP*, pp. 5206-5210, 2015. DOI: 10.1109/ICASSP.2015.7178964. `samples/libri1_3s.wav` is 5.0 s to 8.0 s of utterance 5703-47212-0000, as distributed with Librosa (`librosa.ex("libri1")`), resampled to 16 kHz mono. LibriSpeech is licensed under CC BY 4.0.
