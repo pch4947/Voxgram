@@ -1,1 +1,8 @@
 capture_id,date,session,card,format_version,phone,tilt_deg,tilt_axis,roll_deg,light,lux_min,lux_max,distance_cm,ev_comp,setup_ok,commit,stages,detect_ok,mae_gray,mae_db,intelligibility,notes
+20261126_c01_p1_t00_l0_01,2026-11-26,20261126_session-01,c01,0.3-pilot,p1,1,none,1,l0,,,,0,yes,,,,,,,"tilt and roll estimated from the homography"
+20261126_c01_p1_t15p_l0_01,2026-11-26,20261126_session-01,c01,0.3-pilot,p1,13,pitch,1,l0,,,,0,yes,,,,,,,"tilt and roll estimated from the homography"
+20261126_c01_p1_t15p_l0_02,2026-11-26,20261126_session-01,c01,0.3-pilot,p1,13,pitch,90,l0,,,,0,no,,,,,,,"portrait frame (card rotated 90 degrees in the image); tilt and roll estimated from the homography"
+20261126_c01_p1_t30p_l0_01,2026-11-26,20261126_session-01,c01,0.3-pilot,p1,27,pitch,1,l0,,,,0,yes,,,,,,,"tilt and roll estimated from the homography"
+20261128_c02_p1_t00_l0_01,2026-11-28,20261128_session-02,c02,0.3-pilot,p1,1,none,0,l0,,,,0,yes,,,,,,,"HEIC converted to PNG losslessly with ffmpeg; tilt and roll estimated from the homography"
+20261128_c02_p1_t30p_l0_01,2026-11-28,20261128_session-02,c02,0.3-pilot,p1,37,pitch,3,l0,,,,0,yes,,,,,,,"HEIC converted to PNG losslessly with ffmpeg; tilt and roll estimated from the homography; between t30 and t45"
+20261128_c02_p1_t30p_l0_02,2026-11-28,20261128_session-02,c02,0.3-pilot,p1,39,pitch,2,l0,,,,0,yes,,,,,,,"HEIC converted to PNG losslessly with ffmpeg; tilt and roll estimated from the homography; between t30 and t45"
