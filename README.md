@@ -72,10 +72,12 @@ The repository is also a Visual Studio solution. It needs Visual Studio 2022
 or newer with the **Python development** workload.
 
 1. Open `Voxgram.sln`.
-2. In Solution Explorer, right-click **Python Environments**, choose
-   **Add Environment**, then **Virtual environment**. Name it `.venv` and
-   install the packages from `requirements.txt`. If Visual Studio offers to
-   create the missing `.venv` environment, accept instead.
+2. The project runs in a virtual environment named `.venv` at the root. If
+   you created it with the commands above, there is nothing to do. Otherwise,
+   in Solution Explorer, right-click **Python Environments**, choose
+   **Add Environment**, then **Virtual environment**, name it `.venv`, pick
+   Python 3.10 to 3.12 (tested with 3.12), and install the packages from
+   `requirements.txt`. The toolbar must show `.venv` as the environment.
 3. Press **F5**.
 
 The start-up file is `src\voxgram\evaluation.py`, with the arguments
